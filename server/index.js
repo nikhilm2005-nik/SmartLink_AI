@@ -1,12 +1,16 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
+const connectDB = require('./config/db'); // NEW
 
 const app = express();
 
 // Middleware
 app.use(cors());
-app.use(express.json()); // Allows us to parse JSON bodies in requests
+app.use(express.json());
+
+// Connect to Database
+connectDB(); // NEW
 
 // Health check route
 app.get('/health', (req, res) => {
