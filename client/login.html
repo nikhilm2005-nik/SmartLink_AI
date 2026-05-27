@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>SmartLink AI - Login</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Segoe UI', sans-serif;
+            background: #0f0f1a;
+            color: #e0e0e0;
+            min-height: 100vh;
+        }
+        .navbar {
+            background: #16213e;
+            padding: 16px 32px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 1px solid #1a1a3e;
+        }
+        .navbar-brand { font-size: 20px; color: #4fc3f7; font-weight: 700; }
+        .container { max-width: 420px; margin: 60px auto; padding: 24px 20px; }
+        .card {
+            background: #16213e;
+            border-radius: 12px;
+            padding: 28px;
+            border: 1px solid #1e2d50;
+        }
+        label {
+            display: block; font-size: 12px; color: #aaa;
+            margin-bottom: 5px; margin-top: 14px;
+        }
+        label:first-child { margin-top: 0; }
+        input {
+            width: 100%; padding: 11px 14px; border-radius: 8px;
+            border: 1px solid #2a3a5e; background: #0f0f1a;
+            color: #e0e0e0; font-size: 14px; outline: none;
+            transition: border 0.2s;
+        }
+        input:focus { border-color: #4fc3f7; }
+        .btn {
+            width: 100%; margin-top: 18px; padding: 13px;
+            border: none; border-radius: 8px;
+            background: linear-gradient(135deg, #4fc3f7, #0288d1);
+            color: #fff; font-size: 15px; font-weight: 600;
+            cursor: pointer; transition: opacity 0.2s;
+        }
+        .btn:hover { opacity: 0.88; }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .error-msg { color: #ef5350; font-size: 13px; margin-top: 10px; display: none; }
+        .error-msg.show { display: block; }
+        a { color: #4fc3f7; text-decoration: none; }
+        a:hover { text-decoration: underline; }
+    </style>
+</head>
+<body>
+    <div class="navbar">
+        <span class="navbar-brand">SmartLink AI</span>
+    </div>
+    
+    <div class="container">
+        <div class="card">
+            <h2 style="font-size:20px;color:#fff;margin-bottom:4px;">Welcome Back</h2>
+            <p style="font-size:13px;color: #aaa;margin-bottom:16px;">
+                No account? <a href="register.html">Register</a>
+            </p>
+            
+            <label>Email</label>
+            <input type="email" id="email" placeholder="you@example.com"/>
+            
+            <label>Password</label>
+            <input type="password" id="password" placeholder="••••••••" onkeydown="if(event.key === 'Enter') login()"/>
+            
+            <button class="btn" onclick="login()">Login</button>
+            
+            <p class="error-msg" id="errorMsg"></p>
+        </div>
+    </div>
+
+    <script>
+        const BASE_URL = 'http://localhost:5000';
+
+        // Redirect if already logged in
+        if (localStorage.getItem('smartlink_token')) {
+            window.location.href = 'index.html';
+        }
+
+        async function login() {
+            const email = document.getElementById('email').value.trim();
+            const password = document.getElementById('password').value;
+            const btn = document.querySelector('.btn');
+            const errorMsg = document.getElementById('errorMsg');
+            
+            errorMsg.classList.remove('show');
+
+            if (!email || !password) {
+                showError('Both fields are required');
+                return;
+            }
+
+            btn.disabled = true;
+            btn.textContent = 'Logging in...';
+
+            try {
+                const res = await fetch(`${BASE_URL}/api/auth/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password })
+                });
+                
+                const data = await res.json();
+                
+                if (!res.ok) { 
+                    showError(data.error || 'Login failed'); 
+                    return; 
+                }
+
+                // Store JWT and User Data
+                localStorage.setItem('smartlink_token', data.token);
+                localStorage.setItem('smartlink_user', JSON.stringify(data.user));
+                
+                // Redirect to the dashboard
+                window.location.href = 'index.html';
+
+            } catch (err) {
+                showError('Server error. Is the backend running?');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Login';
+            }
+        }
+
+        function showError(msg) {
+            const errorMsg = document.getElementById('errorMsg');
+            errorMsg.textContent = msg;
+            errorMsg.classList.add('show');
+        }
+    </script>
+</body>
+</html>
