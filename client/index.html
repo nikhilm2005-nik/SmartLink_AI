@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>SmartLink AI - Dashboard</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Segoe UI', sans-serif;
+            background: #0f0f1a;
+            color: #e0e0e0;
+            min-height: 100vh;
+        }
+        .navbar {
+            background: #16213e;
+            padding: 16px 32px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 1px solid #1a1a3e;
+        }
+        .navbar-brand { font-size: 20px; color: #4fc3f7; font-weight: 700; }
+        .navbar-right { display: flex; align-items: center; gap: 12px; }
+        .navbar-user { font-size: 13px; color: #aaa; }
+        .container { max-width: 720px; margin: 40px auto; padding: 24px 20px; }
+        .card {
+            background: #16213e;
+            border-radius: 12px;
+            padding: 28px;
+            border: 1px solid #1e2d50;
+            margin-bottom: 20px;
+        }
+        .btn-outline {
+            padding: 6px 14px; background: #1e2d50; color: #aaa;
+            border: none; border-radius: 6px; cursor: pointer; font-size: 12px;
+            transition: background 0.2s, color 0.2s;
+        }
+        .btn-outline:hover { background: #2a3a5e; color: #fff; }
+    </style>
+</head>
+<body>
+    <div class="navbar">
+        <span class="navbar-brand">SmartLink AI</span>
+        <div class="navbar-right">
+            <span class="navbar-user" id="navUser"></span>
+            <button class="btn-outline" onclick="logout()">Logout</button>
+        </div>
+    </div>
+    
+    <div class="container">
+        <div class="card">
+            <h3 style="color:#fff; font-size:18px;">Welcome to your Dashboard</h3>
+            <p style="color:#aaa; font-size:14px; margin-top:8px;">
+                Your authentication flow is officially complete. We will start building the URL shortener here tomorrow!
+            </p>
+        </div>
+    </div>
+
+    <script>
+        const BASE_URL = 'http://localhost:5000';
+
+        // --- AUTH GUARD ---
+        const token = localStorage.getItem('smartlink_token');
+        
+        // If there is no token, kick them back to login immediately
+        if (!token) {
+            window.location.href = 'login.html';
+        }
+
+        // --- POPULATE USER DATA ---
+        // We use || '{}' as a fallback so JSON.parse doesn't crash if it's null
+        const user = JSON.parse(localStorage.getItem('smartlink_user') || '{}');
+        
+        if (user.name) {
+            document.getElementById('navUser').textContent = user.name;
+        }
+
+        // --- LOGOUT LOGIC ---
+        function logout() {
+            // Destroy the credentials
+            localStorage.removeItem('smartlink_token');
+            localStorage.removeItem('smartlink_user');
+            
+            // Redirect to login
+            window.location.href = 'login.html';
+        }
+    </script>
+</body>
+</html>
