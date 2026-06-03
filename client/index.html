@@ -31,12 +31,34 @@
             border: 1px solid #1e2d50;
             margin-bottom: 20px;
         }
+        label {
+            display: block; font-size: 12px; color: #aaa;
+            margin-bottom: 5px; margin-top: 14px;
+        }
+        label:first-child { margin-top: 0; }
+        input {
+            width: 100%; padding: 11px 14px; border-radius: 8px;
+            border: 1px solid #2a3a5e; background: #0f0f1a;
+            color: #e0e0e0; font-size: 14px; outline: none;
+            transition: border 0.2s;
+        }
+        input:focus { border-color: #4fc3f7; }
+        .btn {
+            width: 100%; padding: 13px; border: none; border-radius: 8px;
+            background: linear-gradient(135deg, #4fc3f7, #0288d1);
+            color: #fff; font-size: 15px; font-weight: 600;
+            cursor: pointer; transition: opacity 0.2s;
+        }
+        .btn:hover { opacity: 0.88; }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
         .btn-outline {
             padding: 6px 14px; background: #1e2d50; color: #aaa;
             border: none; border-radius: 6px; cursor: pointer; font-size: 12px;
             transition: background 0.2s, color 0.2s;
         }
         .btn-outline:hover { background: #2a3a5e; color: #fff; }
+        .error-msg { color: #ef5350; font-size: 13px; margin-top: 10px; display: none; }
+        .error-msg.show { display: block; }
     </style>
 </head>
 <body>
@@ -50,10 +72,24 @@
     
     <div class="container">
         <div class="card">
-            <h3 style="color:#fff; font-size:18px;">Welcome to your Dashboard</h3>
-            <p style="color:#aaa; font-size:14px; margin-top:8px;">
-                Your authentication flow is officially complete. We will start building the URL shortener here tomorrow!
-            </p>
+            <h3 style="color:#fff; font-size:18px; margin-bottom: 16px;">Create a Short Link</h3>
+            
+            <label>Destination URL</label>
+            <input type="url" id="longUrl" placeholder="https://example.com/my-super-long-link" required />
+            
+            <label>Custom Alias (Optional)</label>
+            <input type="text" id="customAlias" placeholder="e.g., my-campaign" />
+            
+            <button class="btn" onclick="shortenUrl()" style="margin-top: 20px;">Shorten URL</button>
+            <p class="error-msg" id="errorMsg"></p>
+        </div>
+
+        <div class="card" id="resultCard" style="display: none; border-color: #4fc3f7;">
+            <h4 style="color:#4fc3f7; margin-bottom: 10px;">Your link is ready!</h4>
+            <div style="display: flex; gap: 10px;">
+                <input type="text" id="shortUrlResult" readonly style="background: #0f0f1a; border: 1px solid #2a3a5e; color: #4fc3f7; font-weight: bold;" />
+                <button class="btn-outline" onclick="copyToClipboard()" style="margin-top: 0; padding: 11px 16px;">Copy</button>
+            </div>
         </div>
     </div>
 
@@ -62,28 +98,91 @@
 
         // --- AUTH GUARD ---
         const token = localStorage.getItem('smartlink_token');
-        
-        // If there is no token, kick them back to login immediately
-        if (!token) {
-            window.location.href = 'login.html';
-        }
+        if (!token) window.location.href = 'login.html';
 
         // --- POPULATE USER DATA ---
-        // We use || '{}' as a fallback so JSON.parse doesn't crash if it's null
         const user = JSON.parse(localStorage.getItem('smartlink_user') || '{}');
-        
-        if (user.name) {
-            document.getElementById('navUser').textContent = user.name;
-        }
+        if (user.name) document.getElementById('navUser').textContent = user.name;
 
         // --- LOGOUT LOGIC ---
         function logout() {
-            // Destroy the credentials
             localStorage.removeItem('smartlink_token');
             localStorage.removeItem('smartlink_user');
-            
-            // Redirect to login
             window.location.href = 'login.html';
+        }
+
+        // --- SHORTEN URL LOGIC ---
+        async function shortenUrl() {
+            const originalUrl = document.getElementById('longUrl').value.trim();
+            const customAlias = document.getElementById('customAlias').value.trim();
+            const btn = document.querySelector('.btn');
+            const errorMsg = document.getElementById('errorMsg');
+            const resultCard = document.getElementById('resultCard');
+            const shortUrlResult = document.getElementById('shortUrlResult');
+            
+            errorMsg.classList.remove('show');
+            resultCard.style.display = 'none';
+
+            if (!originalUrl) {
+                errorMsg.textContent = 'Please enter a valid URL';
+                errorMsg.classList.add('show');
+                return;
+            }
+
+            btn.disabled = true;
+            btn.textContent = 'Generating...';
+
+            try {
+                const res = await fetch(`${BASE_URL}/api/shorten`, {
+                    method: 'POST',
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}` 
+                    },
+                    body: JSON.stringify({ originalUrl, customAlias })
+                });
+                
+                const data = await res.json();
+                
+                if (!res.ok) { 
+                    errorMsg.textContent = data.error || 'Failed to shorten link';
+                    errorMsg.classList.add('show');
+                    return; 
+                }
+
+                // Success! Show the result card
+                document.getElementById('longUrl').value = '';
+                document.getElementById('customAlias').value = '';
+                
+                shortUrlResult.value = data.shortUrl;
+                resultCard.style.display = 'block';
+
+            } catch (err) {
+                errorMsg.textContent = 'Server error. Is the backend running?';
+                errorMsg.classList.add('show');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Shorten URL';
+            }
+        }
+
+        // --- COPY TO CLIPBOARD ---
+        function copyToClipboard() {
+            const copyText = document.getElementById("shortUrlResult");
+            copyText.select();
+            copyText.setSelectionRange(0, 99999); 
+            navigator.clipboard.writeText(copyText.value);
+            
+            const copyBtn = document.querySelector('#resultCard .btn-outline');
+            copyBtn.textContent = 'Copied!';
+            copyBtn.style.background = '#4fc3f7';
+            copyBtn.style.color = '#000';
+            
+            setTimeout(() => {
+                copyBtn.textContent = 'Copy';
+                copyBtn.style.background = '#1e2d50';
+                copyBtn.style.color = '#aaa';
+            }, 2000);
         }
     </script>
 </body>
