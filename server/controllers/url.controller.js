@@ -48,4 +48,47 @@ const shortenUrl = async (req, res) => {
     }
 };
 
-module.exports = { shortenUrl };
+// GET /api/my-urls (Protected)
+const getUserUrls = async (req, res) => {
+    try {
+        // Find all URLs belonging to the logged-in user, sorted by newest first
+        const urls = await Url.find({ userId: req.user._id }).sort({ createdAt: -1 });
+        res.json(urls);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Server error while fetching URLs' });
+    }
+};
+
+// GET /:shortCode (Public)
+const redirectUrl = async (req, res) => {
+    try {
+        const { shortCode } = req.params;
+
+        const url = await Url.findOne({ shortCode });
+
+        if (!url) {
+            return res.status(404).send('URL not found');
+        }
+
+        // Check if the link has expired
+        if (url.expiresAt && new Date() > url.expiresAt) {
+            return res.status(410).send('This link has expired');
+        }
+
+        // Record the click (we will add richer data like IP and Country later)
+        url.clicks.push({
+            timestamp: new Date(),
+        });
+        await url.save();
+
+        // Perform the actual redirect!
+        res.redirect(url.originalUrl);
+
+    } catch (err) {
+        console.error(err);
+        res.status(500).send('Server error');
+    }
+};
+
+module.exports = { shortenUrl, getUserUrls, redirectUrl };
