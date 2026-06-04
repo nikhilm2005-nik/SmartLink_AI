@@ -18,7 +18,8 @@ app.get('/health', (req, res) => {
     res.status(200).json({ status: 'ok', message: 'SmartLink API is running' });
 });
 app.use('/api/auth', require('./routes/auth.routes'));
-app.use('/api', require('./routes/url.routes')); // <-- NEW
+app.use('/api', require('./routes/url.routes'));
+app.use('/', require('./routes/redirect.routes'));
 
 const PORT = process.env.PORT || 5000;
 
