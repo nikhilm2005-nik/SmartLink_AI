@@ -6,59 +6,34 @@
     <title>SmartLink AI - Dashboard</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
-        body {
-            font-family: 'Segoe UI', sans-serif;
-            background: #0f0f1a;
-            color: #e0e0e0;
-            min-height: 100vh;
-        }
-        .navbar {
-            background: #16213e;
-            padding: 16px 32px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            border-bottom: 1px solid #1a1a3e;
-        }
+        body { font-family: 'Segoe UI', sans-serif; background: #0f0f1a; color: #e0e0e0; min-height: 100vh; }
+        .navbar { background: #16213e; padding: 16px 32px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #1a1a3e; }
         .navbar-brand { font-size: 20px; color: #4fc3f7; font-weight: 700; }
         .navbar-right { display: flex; align-items: center; gap: 12px; }
         .navbar-user { font-size: 13px; color: #aaa; }
-        .container { max-width: 720px; margin: 40px auto; padding: 24px 20px; }
-        .card {
-            background: #16213e;
-            border-radius: 12px;
-            padding: 28px;
-            border: 1px solid #1e2d50;
-            margin-bottom: 20px;
-        }
-        label {
-            display: block; font-size: 12px; color: #aaa;
-            margin-bottom: 5px; margin-top: 14px;
-        }
+        .container { max-width: 800px; margin: 40px auto; padding: 24px 20px; }
+        .card { background: #16213e; border-radius: 12px; padding: 28px; border: 1px solid #1e2d50; margin-bottom: 20px; }
+        label { display: block; font-size: 12px; color: #aaa; margin-bottom: 5px; margin-top: 14px; }
         label:first-child { margin-top: 0; }
-        input {
-            width: 100%; padding: 11px 14px; border-radius: 8px;
-            border: 1px solid #2a3a5e; background: #0f0f1a;
-            color: #e0e0e0; font-size: 14px; outline: none;
-            transition: border 0.2s;
-        }
+        input { width: 100%; padding: 11px 14px; border-radius: 8px; border: 1px solid #2a3a5e; background: #0f0f1a; color: #e0e0e0; font-size: 14px; outline: none; transition: border 0.2s; }
         input:focus { border-color: #4fc3f7; }
-        .btn {
-            width: 100%; padding: 13px; border: none; border-radius: 8px;
-            background: linear-gradient(135deg, #4fc3f7, #0288d1);
-            color: #fff; font-size: 15px; font-weight: 600;
-            cursor: pointer; transition: opacity 0.2s;
-        }
+        .btn { width: 100%; padding: 13px; border: none; border-radius: 8px; background: linear-gradient(135deg, #4fc3f7, #0288d1); color: #fff; font-size: 15px; font-weight: 600; cursor: pointer; transition: opacity 0.2s; }
         .btn:hover { opacity: 0.88; }
         .btn:disabled { opacity: 0.5; cursor: not-allowed; }
-        .btn-outline {
-            padding: 6px 14px; background: #1e2d50; color: #aaa;
-            border: none; border-radius: 6px; cursor: pointer; font-size: 12px;
-            transition: background 0.2s, color 0.2s;
-        }
+        .btn-outline { padding: 6px 14px; background: #1e2d50; color: #aaa; border: none; border-radius: 6px; cursor: pointer; font-size: 12px; transition: background 0.2s, color 0.2s; }
         .btn-outline:hover { background: #2a3a5e; color: #fff; }
         .error-msg { color: #ef5350; font-size: 13px; margin-top: 10px; display: none; }
         .error-msg.show { display: block; }
+        
+        /* NEW TABLE STYLES */
+        .table-wrapper { overflow-x: auto; margin-top: 16px; }
+        table { width: 100%; border-collapse: collapse; font-size: 13px; text-align: left; }
+        th { padding: 14px 12px; background: #111a30; color: #4fc3f7; border-bottom: 2px solid #2a3a5e; font-weight: 600; }
+        td { padding: 14px 12px; border-bottom: 1px solid #1e2d50; color: #e0e0e0; }
+        tr:hover { background: #1a2642; }
+        .short-link-text { color: #4fc3f7; text-decoration: none; font-weight: 600; }
+        .short-link-text:hover { text-decoration: underline; }
+        .truncate { max-width: 250px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: inline-block; vertical-align: middle; }
     </style>
 </head>
 <body>
@@ -73,13 +48,10 @@
     <div class="container">
         <div class="card">
             <h3 style="color:#fff; font-size:18px; margin-bottom: 16px;">Create a Short Link</h3>
-            
             <label>Destination URL</label>
             <input type="url" id="longUrl" placeholder="https://example.com/my-super-long-link" required />
-            
             <label>Custom Alias (Optional)</label>
             <input type="text" id="customAlias" placeholder="e.g., my-campaign" />
-            
             <button class="btn" onclick="shortenUrl()" style="margin-top: 20px;">Shorten URL</button>
             <p class="error-msg" id="errorMsg"></p>
         </div>
@@ -90,6 +62,26 @@
                 <input type="text" id="shortUrlResult" readonly style="background: #0f0f1a; border: 1px solid #2a3a5e; color: #4fc3f7; font-weight: bold;" />
                 <button class="btn-outline" onclick="copyToClipboard()" style="margin-top: 0; padding: 11px 16px;">Copy</button>
             </div>
+        </div>
+
+        <div class="card">
+            <h3 style="color:#fff; font-size:18px;">Your Links</h3>
+            <div class="table-wrapper">
+                <table id="linksTable">
+                    <thead>
+                        <tr>
+                            <th>Original URL</th>
+                            <th>Short Link</th>
+                            <th>Clicks</th>
+                            <th>Date Created</th>
+                        </tr>
+                    </thead>
+                    <tbody id="linksTableBody">
+                        <tr><td colspan="4" style="text-align: center; color: #aaa;">Loading your links...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <p id="noLinksMsg" style="color: #aaa; font-size: 13px; margin-top: 15px; display: none; text-align: center;">You haven't created any links yet.</p>
         </div>
     </div>
 
@@ -104,12 +96,60 @@
         const user = JSON.parse(localStorage.getItem('smartlink_user') || '{}');
         if (user.name) document.getElementById('navUser').textContent = user.name;
 
-        // --- LOGOUT LOGIC ---
         function logout() {
             localStorage.removeItem('smartlink_token');
             localStorage.removeItem('smartlink_user');
             window.location.href = 'login.html';
         }
+
+        // --- NEW: LOAD URL HISTORY ---
+        async function loadHistory() {
+            try {
+                const res = await fetch(`${BASE_URL}/api/my-urls`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                
+                if (!res.ok) throw new Error('Failed to fetch URLs');
+                
+                const urls = await res.json();
+                const tbody = document.getElementById('linksTableBody');
+                const noLinksMsg = document.getElementById('noLinksMsg');
+                const linksTable = document.getElementById('linksTable');
+                
+                tbody.innerHTML = ''; // Clear loading text
+                
+                if (urls.length === 0) {
+                    noLinksMsg.style.display = 'block';
+                    linksTable.style.display = 'none';
+                    return;
+                }
+                
+                linksTable.style.display = 'table';
+                noLinksMsg.style.display = 'none';
+
+                urls.forEach(url => {
+                    const shortUrlFull = `${BASE_URL}/${url.shortCode}`;
+                    // Format the date to be human readable
+                    const date = new Date(url.createdAt).toLocaleDateString();
+                    
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td><span class="truncate" title="${url.originalUrl}">${url.originalUrl}</span></td>
+                        <td><a href="${shortUrlFull}" target="_blank" class="short-link-text">${url.shortCode}</a></td>
+                        <td>${url.clicks.length}</td>
+                        <td>${date}</td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            } catch (err) {
+                console.error("Error loading history:", err);
+                document.getElementById('linksTableBody').innerHTML = 
+                    `<tr><td colspan="4" style="text-align: center; color: #ef5350;">Error loading links.</td></tr>`;
+            }
+        }
+
+        // Trigger history load as soon as the page opens!
+        loadHistory();
 
         // --- SHORTEN URL LOGIC ---
         async function shortenUrl() {
@@ -125,48 +165,38 @@
 
             if (!originalUrl) {
                 errorMsg.textContent = 'Please enter a valid URL';
-                errorMsg.classList.add('show');
-                return;
+                errorMsg.classList.add('show'); return;
             }
 
-            btn.disabled = true;
-            btn.textContent = 'Generating...';
+            btn.disabled = true; btn.textContent = 'Generating...';
 
             try {
                 const res = await fetch(`${BASE_URL}/api/shorten`, {
                     method: 'POST',
-                    headers: { 
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${token}` 
-                    },
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
                     body: JSON.stringify({ originalUrl, customAlias })
                 });
                 
                 const data = await res.json();
-                
-                if (!res.ok) { 
-                    errorMsg.textContent = data.error || 'Failed to shorten link';
-                    errorMsg.classList.add('show');
-                    return; 
-                }
+                if (!res.ok) { errorMsg.textContent = data.error || 'Failed to shorten link'; errorMsg.classList.add('show'); return; }
 
-                // Success! Show the result card
                 document.getElementById('longUrl').value = '';
                 document.getElementById('customAlias').value = '';
                 
                 shortUrlResult.value = data.shortUrl;
                 resultCard.style.display = 'block';
 
+                // NEW: Refresh the history table instantly!
+                loadHistory();
+
             } catch (err) {
                 errorMsg.textContent = 'Server error. Is the backend running?';
                 errorMsg.classList.add('show');
             } finally {
-                btn.disabled = false;
-                btn.textContent = 'Shorten URL';
+                btn.disabled = false; btn.textContent = 'Shorten URL';
             }
         }
 
-        // --- COPY TO CLIPBOARD ---
         function copyToClipboard() {
             const copyText = document.getElementById("shortUrlResult");
             copyText.select();
@@ -174,14 +204,10 @@
             navigator.clipboard.writeText(copyText.value);
             
             const copyBtn = document.querySelector('#resultCard .btn-outline');
-            copyBtn.textContent = 'Copied!';
-            copyBtn.style.background = '#4fc3f7';
-            copyBtn.style.color = '#000';
+            copyBtn.textContent = 'Copied!'; copyBtn.style.background = '#4fc3f7'; copyBtn.style.color = '#000';
             
             setTimeout(() => {
-                copyBtn.textContent = 'Copy';
-                copyBtn.style.background = '#1e2d50';
-                copyBtn.style.color = '#aaa';
+                copyBtn.textContent = 'Copy'; copyBtn.style.background = '#1e2d50'; copyBtn.style.color = '#aaa';
             }, 2000);
         }
     </script>
