@@ -1,5 +1,6 @@
 const { nanoid } = require('nanoid');
 const Url = require('../models/Url');
+const QRCode = require('qrcode');
 
 // POST /api/shorten (protected route)
 const shortenUrl = async (req, res) => {
@@ -10,36 +11,35 @@ const shortenUrl = async (req, res) => {
             return res.status(400).json({ error: 'URL is required' });
         }
 
-        // If user provides an alias, use it. Otherwise, generate 6 random characters.
         const shortCode = customAlias || nanoid(6);
 
-        // Check if the shortcode/alias is already taken
         const existing = await Url.findOne({ shortCode });
         if (existing) {
             return res.status(400).json({ error: 'Alias already taken' });
         }
 
         const shortUrl = `${process.env.BASE_URL}/${shortCode}`;
-
-        // Calculate expiration date if provided
         const expiresAt = expiresIn ? new Date(Date.now() + expiresIn * 24 * 60 * 60 * 1000) : null;
+
+        // NEW: Generate the QR Code as a Base64 Data URI
+        const qrCodeData = await QRCode.toDataURL(shortUrl);
 
         // Save to database
         const url = await Url.create({
-            userId: req.user._id, // Tied directly to the logged-in user!
+            userId: req.user._id,
             originalUrl,
             shortCode,
             customAlias: customAlias || null,
-            expiresAt
+            expiresAt,
+            qrCode: qrCodeData // <-- NEW: Save it to the DB!
         });
-
-        // TODO: Later we will add Redis caching, AI titles, and QR generation here.
 
         res.status(201).json({ 
             shortUrl, 
             shortCode, 
             originalUrl,
-            title: url.title
+            title: url.title,
+            qrCode: url.qrCode // <-- NEW: Send it back to the frontend
         });
 
     } catch (err) {
@@ -47,6 +47,7 @@ const shortenUrl = async (req, res) => {
         res.status(500).json({ error: 'Server error' });
     }
 };
+
 
 // GET /api/my-urls (Protected)
 const getUserUrls = async (req, res) => {
