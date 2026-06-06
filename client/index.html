@@ -25,7 +25,7 @@
         .error-msg { color: #ef5350; font-size: 13px; margin-top: 10px; display: none; }
         .error-msg.show { display: block; }
         
-        /* NEW TABLE STYLES */
+        /* TABLE STYLES */
         .table-wrapper { overflow-x: auto; margin-top: 16px; }
         table { width: 100%; border-collapse: collapse; font-size: 13px; text-align: left; }
         th { padding: 14px 12px; background: #111a30; color: #4fc3f7; border-bottom: 2px solid #2a3a5e; font-weight: 600; }
@@ -58,9 +58,12 @@
 
         <div class="card" id="resultCard" style="display: none; border-color: #4fc3f7;">
             <h4 style="color:#4fc3f7; margin-bottom: 10px;">Your link is ready!</h4>
-            <div style="display: flex; gap: 10px;">
+            <div style="display: flex; gap: 10px; margin-bottom: 16px;">
                 <input type="text" id="shortUrlResult" readonly style="background: #0f0f1a; border: 1px solid #2a3a5e; color: #4fc3f7; font-weight: bold;" />
                 <button class="btn-outline" onclick="copyToClipboard()" style="margin-top: 0; padding: 11px 16px;">Copy</button>
+            </div>
+            <div style="text-align: center;">
+                <img id="qrCodeImage" src="" alt="QR Code" style="border-radius: 8px; border: 4px solid #fff; max-width: 140px; display: none; margin: 0 auto;" />
             </div>
         </div>
 
@@ -74,10 +77,10 @@
                             <th>Short Link</th>
                             <th>Clicks</th>
                             <th>Date Created</th>
-                        </tr>
+                            <th>QR Code</th> </tr>
                     </thead>
                     <tbody id="linksTableBody">
-                        <tr><td colspan="4" style="text-align: center; color: #aaa;">Loading your links...</td></tr>
+                        <tr><td colspan="5" style="text-align: center; color: #aaa;">Loading your links...</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -102,7 +105,7 @@
             window.location.href = 'login.html';
         }
 
-        // --- NEW: LOAD URL HISTORY ---
+        // --- LOAD URL HISTORY ---
         async function loadHistory() {
             try {
                 const res = await fetch(`${BASE_URL}/api/my-urls`, {
@@ -116,7 +119,7 @@
                 const noLinksMsg = document.getElementById('noLinksMsg');
                 const linksTable = document.getElementById('linksTable');
                 
-                tbody.innerHTML = ''; // Clear loading text
+                tbody.innerHTML = ''; 
                 
                 if (urls.length === 0) {
                     noLinksMsg.style.display = 'block';
@@ -129,7 +132,6 @@
 
                 urls.forEach(url => {
                     const shortUrlFull = `${BASE_URL}/${url.shortCode}`;
-                    // Format the date to be human readable
                     const date = new Date(url.createdAt).toLocaleDateString();
                     
                     const tr = document.createElement('tr');
@@ -138,17 +140,18 @@
                         <td><a href="${shortUrlFull}" target="_blank" class="short-link-text">${url.shortCode}</a></td>
                         <td>${url.clicks.length}</td>
                         <td>${date}</td>
+                        <td>${url.qrCode ? `<a href="${url.qrCode}" download="qr-${url.shortCode}.png" class="short-link-text">Download</a>` : '<span style="color:#aaa">N/A</span>'}</td>
                     `;
                     tbody.appendChild(tr);
                 });
             } catch (err) {
                 console.error("Error loading history:", err);
                 document.getElementById('linksTableBody').innerHTML = 
-                    `<tr><td colspan="4" style="text-align: center; color: #ef5350;">Error loading links.</td></tr>`;
+                    `<tr><td colspan="5" style="text-align: center; color: #ef5350;">Error loading links.</td></tr>`;
             }
         }
 
-        // Trigger history load as soon as the page opens!
+        // Trigger history load
         loadHistory();
 
         // --- SHORTEN URL LOGIC ---
@@ -159,9 +162,11 @@
             const errorMsg = document.getElementById('errorMsg');
             const resultCard = document.getElementById('resultCard');
             const shortUrlResult = document.getElementById('shortUrlResult');
+            const qrImg = document.getElementById('qrCodeImage');
             
             errorMsg.classList.remove('show');
             resultCard.style.display = 'none';
+            qrImg.style.display = 'none'; // Hide QR code initially
 
             if (!originalUrl) {
                 errorMsg.textContent = 'Please enter a valid URL';
@@ -184,9 +189,16 @@
                 document.getElementById('customAlias').value = '';
                 
                 shortUrlResult.value = data.shortUrl;
+                
+                // Show QR code
+                if (data.qrCode) {
+                    qrImg.src = data.qrCode;
+                    qrImg.style.display = 'block';
+                }
+                
                 resultCard.style.display = 'block';
 
-                // NEW: Refresh the history table instantly!
+                // Refresh the history table instantly!
                 loadHistory();
 
             } catch (err) {
