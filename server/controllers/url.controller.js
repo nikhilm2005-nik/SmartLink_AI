@@ -92,4 +92,25 @@ const redirectUrl = async (req, res) => {
     }
 };
 
-module.exports = { shortenUrl, getUserUrls, redirectUrl };
+// DELETE /api/:id (Protected)
+const deleteUrl = async (req, res) => {
+    try {
+        // Find the URL by ID AND ensure the logged-in user actually owns it
+        const url = await Url.findOneAndDelete({ 
+            _id: req.params.id, 
+            userId: req.user._id 
+        });
+
+        if (!url) {
+            return res.status(404).json({ error: 'URL not found or unauthorized' });
+        }
+
+        res.json({ message: 'URL deleted successfully' });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Server error' });
+    }
+};
+
+
+module.exports = { shortenUrl, getUserUrls, redirectUrl, deleteUrl };
