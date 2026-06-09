@@ -112,5 +112,37 @@ const deleteUrl = async (req, res) => {
     }
 };
 
+// GET /api/analytics (Protected)
+const getAnalytics = async (req, res) => {
+    try {
+        // We use MongoDB Aggregation to process data incredibly fast directly inside the database
+        const stats = await Url.aggregate([
+            { $match: { userId: req.user._id } }, // Step 1: Find only this user's links
+            { 
+                $group: { 
+                    _id: null, 
+                    totalLinks: { $sum: 1 }, // Step 2: Count the links
+                    totalClicks: { $sum: { $size: "$clicks" } } // Step 3: Add up the size of every clicks array
+                } 
+            }
+        ]);
 
-module.exports = { shortenUrl, getUserUrls, redirectUrl, deleteUrl };
+        // If the user has no links yet, the stats array will be empty
+        if (stats.length === 0) {
+            return res.json({ totalLinks: 0, totalClicks: 0 });
+        }
+
+        res.json({ 
+            totalLinks: stats[0].totalLinks, 
+            totalClicks: stats[0].totalClicks 
+        });
+
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Server error while fetching analytics' });
+    }
+};
+
+module.exports = { shortenUrl, getUserUrls, redirectUrl, deleteUrl, getAnalytics };
+
+
