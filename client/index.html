@@ -25,7 +25,12 @@
         .error-msg { color: #ef5350; font-size: 13px; margin-top: 10px; display: none; }
         .error-msg.show { display: block; }
         
-        /* TABLE STYLES */
+        /* Stats & Table Styles */
+        .stats-grid { display: flex; gap: 20px; margin-bottom: 20px; }
+        .stat-card { flex: 1; background: #16213e; border-radius: 12px; padding: 24px; border: 1px solid #1e2d50; text-align: center; }
+        .stat-title { font-size: 13px; color: #aaa; text-transform: uppercase; letter-spacing: 1px; }
+        .stat-value { font-size: 36px; font-weight: 700; color: #4fc3f7; margin-top: 10px; }
+        
         .table-wrapper { overflow-x: auto; margin-top: 16px; }
         table { width: 100%; border-collapse: collapse; font-size: 13px; text-align: left; }
         th { padding: 14px 12px; background: #111a30; color: #4fc3f7; border-bottom: 2px solid #2a3a5e; font-weight: 600; }
@@ -48,6 +53,18 @@
     </div>
     
     <div class="container">
+        
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-title">Total Links</div>
+                <div class="stat-value" id="statTotalLinks">...</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-title">Total Clicks</div>
+                <div class="stat-value" id="statTotalClicks">...</div>
+            </div>
+        </div>
+
         <div class="card">
             <h3 style="color:#fff; font-size:18px; margin-bottom: 16px;">Create a Short Link</h3>
             <label>Destination URL</label>
@@ -79,7 +96,8 @@
                             <th>Short Link</th>
                             <th>Clicks</th>
                             <th>Date Created</th>
-                            <th>Actions</th> </tr>
+                            <th>Actions</th>
+                        </tr>
                     </thead>
                     <tbody id="linksTableBody">
                         <tr><td colspan="5" style="text-align: center; color: #aaa;">Loading your links...</td></tr>
@@ -92,12 +110,9 @@
 
     <script>
         const BASE_URL = 'http://localhost:5000';
-
-        // --- AUTH GUARD ---
         const token = localStorage.getItem('smartlink_token');
         if (!token) window.location.href = 'login.html';
 
-        // --- POPULATE USER DATA ---
         const user = JSON.parse(localStorage.getItem('smartlink_user') || '{}');
         if (user.name) document.getElementById('navUser').textContent = user.name;
 
@@ -105,6 +120,26 @@
             localStorage.removeItem('smartlink_token');
             localStorage.removeItem('smartlink_user');
             window.location.href = 'login.html';
+        }
+
+        // --- NEW: LOAD ANALYTICS ---
+        async function loadAnalytics() {
+            try {
+                const res = await fetch(`${BASE_URL}/api/analytics`, {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                
+                if (res.ok) {
+                    const data = await res.json();
+                    // Animate the numbers in for a premium feel
+                    document.getElementById('statTotalLinks').textContent = data.totalLinks;
+                    document.getElementById('statTotalClicks').textContent = data.totalClicks;
+                }
+            } catch (err) {
+                console.error("Error loading analytics:", err);
+                document.getElementById('statTotalLinks').textContent = "-";
+                document.getElementById('statTotalClicks').textContent = "-";
+            }
         }
 
         // --- LOAD URL HISTORY ---
@@ -153,35 +188,30 @@
                 });
             } catch (err) {
                 console.error("Error loading history:", err);
-                document.getElementById('linksTableBody').innerHTML = 
-                    `<tr><td colspan="5" style="text-align: center; color: #ef5350;">Error loading links.</td></tr>`;
             }
         }
 
-        // Trigger history load
-        loadHistory();
+        // --- MASTER REFRESH FUNCTION ---
+        // Call this whenever data changes to update both the table and the cards
+        function refreshDashboard() {
+            loadAnalytics();
+            loadHistory();
+        }
 
-        // --- NEW: DELETE URL LOGIC ---
+        // Trigger on initial page load
+        refreshDashboard();
+
+        // --- DELETE URL LOGIC ---
         async function deleteUrl(urlId) {
-            // Built-in browser confirmation popup
-            if (!confirm("Are you sure you want to delete this link? This cannot be undone.")) {
-                return;
-            }
+            if (!confirm("Are you sure you want to delete this link? This cannot be undone.")) return;
 
             try {
                 const res = await fetch(`${BASE_URL}/api/${urlId}`, {
                     method: 'DELETE',
                     headers: { 'Authorization': `Bearer ${token}` }
                 });
-
-                if (res.ok) {
-                    // Instantly refresh the table to reflect the deletion
-                    loadHistory();
-                } else {
-                    alert('Failed to delete URL. Please try again.');
-                }
+                if (res.ok) refreshDashboard(); // Update table AND numbers!
             } catch (err) {
-                console.error('Delete error:', err);
                 alert('Server error. Could not delete link.');
             }
         }
@@ -219,7 +249,6 @@
 
                 document.getElementById('longUrl').value = '';
                 document.getElementById('customAlias').value = '';
-                
                 shortUrlResult.value = data.shortUrl;
                 
                 if (data.qrCode) {
@@ -228,7 +257,7 @@
                 }
                 
                 resultCard.style.display = 'block';
-                loadHistory();
+                refreshDashboard(); // Update table AND numbers!
 
             } catch (err) {
                 errorMsg.textContent = 'Server error. Is the backend running?';
@@ -243,13 +272,9 @@
             copyText.select();
             copyText.setSelectionRange(0, 99999); 
             navigator.clipboard.writeText(copyText.value);
-            
             const copyBtn = document.querySelector('#resultCard .btn-outline');
             copyBtn.textContent = 'Copied!'; copyBtn.style.background = '#4fc3f7'; copyBtn.style.color = '#000';
-            
-            setTimeout(() => {
-                copyBtn.textContent = 'Copy'; copyBtn.style.background = '#1e2d50'; copyBtn.style.color = '#aaa';
-            }, 2000);
+            setTimeout(() => { copyBtn.textContent = 'Copy'; copyBtn.style.background = '#1e2d50'; copyBtn.style.color = '#aaa'; }, 2000);
         }
     </script>
 </body>
