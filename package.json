@@ -28,7 +28,8 @@
     "jsonwebtoken": "^9.0.3",
     "mongoose": "^9.6.2",
     "nanoid": "^3.3.12",
-    "qrcode": "^1.5.4"
+    "qrcode": "^1.5.4",
+    "ua-parser-js": "^2.0.10"
   },
   "devDependencies": {
     "nodemon": "^3.1.14"

@@ -1,6 +1,7 @@
 const { nanoid } = require('nanoid');
 const Url = require('../models/Url');
 const QRCode = require('qrcode');
+const UAParser = require('ua-parser-js');
 
 // POST /api/shorten (protected route)
 const shortenUrl = async (req, res) => {
@@ -65,25 +66,28 @@ const getUserUrls = async (req, res) => {
 const redirectUrl = async (req, res) => {
     try {
         const { shortCode } = req.params;
-
         const url = await Url.findOne({ shortCode });
 
         if (!url) {
             return res.status(404).send('URL not found');
         }
 
-        // Check if the link has expired
         if (url.expiresAt && new Date() > url.expiresAt) {
             return res.status(410).send('This link has expired');
         }
 
-        // Record the click (we will add richer data like IP and Country later)
+        // NEW: Parse the User-Agent header
+        const parser = new UAParser(req.headers['user-agent']);
+        const result = parser.getResult();
+
+        // Record the rich click data
         url.clicks.push({
             timestamp: new Date(),
+            browser: result.browser.name || 'Unknown Browser',
+            device: result.os.name || 'Unknown OS'
         });
+        
         await url.save();
-
-        // Perform the actual redirect!
         res.redirect(url.originalUrl);
 
     } catch (err) {
