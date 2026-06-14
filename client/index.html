@@ -41,6 +41,13 @@
         .truncate { max-width: 250px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: inline-block; vertical-align: middle; }
         .btn-delete { background: none; border: none; color: #ef5350; cursor: pointer; font-size: 13px; text-decoration: underline; padding: 0; }
         .btn-delete:hover { color: #d32f2f; }
+
+        /* NEW: Modal Styles */
+        .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 1000; align-items: center; justify-content: center; backdrop-filter: blur(3px); }
+        .modal-overlay.show { display: flex; }
+        .modal-content { background: #16213e; border-radius: 12px; padding: 30px; width: 400px; max-width: 90%; border: 1px solid #2a3a5e; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+        .stat-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #1e2d50; font-size: 14px; }
+        .stat-row:last-child { border-bottom: none; }
     </style>
 </head>
 <body>
@@ -53,7 +60,6 @@
     </div>
     
     <div class="container">
-        
         <div class="stats-grid">
             <div class="stat-card">
                 <div class="stat-title">Total Links</div>
@@ -108,6 +114,21 @@
         </div>
     </div>
 
+    <div class="modal-overlay" id="statsModal">
+        <div class="modal-content">
+            <h3 style="color: #4fc3f7; margin-bottom: 20px;">Click Analytics</h3>
+            <div style="margin-bottom: 15px;">
+                <h4 style="color: #aaa; font-size: 12px; text-transform: uppercase; margin-bottom: 8px;">Top Browsers</h4>
+                <div id="browserStats"></div>
+            </div>
+            <div style="margin-bottom: 20px;">
+                <h4 style="color: #aaa; font-size: 12px; text-transform: uppercase; margin-bottom: 8px;">Top Devices/OS</h4>
+                <div id="osStats"></div>
+            </div>
+            <button class="btn" onclick="closeModal()">Close Window</button>
+        </div>
+    </div>
+
     <script>
         const BASE_URL = 'http://localhost:5000';
         const token = localStorage.getItem('smartlink_token');
@@ -116,58 +137,46 @@
         const user = JSON.parse(localStorage.getItem('smartlink_user') || '{}');
         if (user.name) document.getElementById('navUser').textContent = user.name;
 
+        // NEW: Global variable to temporarily hold our links for the modal
+        let globalUrls = [];
+
         function logout() {
             localStorage.removeItem('smartlink_token');
             localStorage.removeItem('smartlink_user');
             window.location.href = 'login.html';
         }
 
-        // --- NEW: LOAD ANALYTICS ---
         async function loadAnalytics() {
             try {
-                const res = await fetch(`${BASE_URL}/api/analytics`, {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
-                
+                const res = await fetch(`${BASE_URL}/api/analytics`, { headers: { 'Authorization': `Bearer ${token}` } });
                 if (res.ok) {
                     const data = await res.json();
-                    // Animate the numbers in for a premium feel
                     document.getElementById('statTotalLinks').textContent = data.totalLinks;
                     document.getElementById('statTotalClicks').textContent = data.totalClicks;
                 }
-            } catch (err) {
-                console.error("Error loading analytics:", err);
-                document.getElementById('statTotalLinks').textContent = "-";
-                document.getElementById('statTotalClicks').textContent = "-";
-            }
+            } catch (err) { console.error(err); }
         }
 
-        // --- LOAD URL HISTORY ---
         async function loadHistory() {
             try {
-                const res = await fetch(`${BASE_URL}/api/my-urls`, {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
+                const res = await fetch(`${BASE_URL}/api/my-urls`, { headers: { 'Authorization': `Bearer ${token}` } });
+                if (!res.ok) throw new Error('Failed to fetch');
                 
-                if (!res.ok) throw new Error('Failed to fetch URLs');
+                globalUrls = await res.json(); // Save to global variable
                 
-                const urls = await res.json();
                 const tbody = document.getElementById('linksTableBody');
                 const noLinksMsg = document.getElementById('noLinksMsg');
                 const linksTable = document.getElementById('linksTable');
                 
                 tbody.innerHTML = ''; 
                 
-                if (urls.length === 0) {
-                    noLinksMsg.style.display = 'block';
-                    linksTable.style.display = 'none';
-                    return;
+                if (globalUrls.length === 0) {
+                    noLinksMsg.style.display = 'block'; linksTable.style.display = 'none'; return;
                 }
                 
-                linksTable.style.display = 'table';
-                noLinksMsg.style.display = 'none';
+                linksTable.style.display = 'table'; noLinksMsg.style.display = 'none';
 
-                urls.forEach(url => {
+                globalUrls.forEach(url => {
                     const shortUrlFull = `${BASE_URL}/${url.shortCode}`;
                     const date = new Date(url.createdAt).toLocaleDateString();
                     
@@ -179,44 +188,78 @@
                         <td>${date}</td>
                         <td>
                             <div style="display: flex; gap: 12px; align-items: center;">
-                                ${url.qrCode ? `<a href="${url.qrCode}" download="qr-${url.shortCode}.png" class="short-link-text">QR</a>` : '<span style="color:#aaa">N/A</span>'}
+                                <button onclick="openStats('${url._id}')" class="btn-outline">Stats</button>
+                                ${url.qrCode ? `<a href="${url.qrCode}" download="qr-${url.shortCode}.png" class="short-link-text" style="font-size:12px;">QR</a>` : ''}
                                 <button onclick="deleteUrl('${url._id}')" class="btn-delete">Delete</button>
                             </div>
                         </td>
                     `;
                     tbody.appendChild(tr);
                 });
-            } catch (err) {
-                console.error("Error loading history:", err);
-            }
+            } catch (err) { console.error(err); }
         }
 
-        // --- MASTER REFRESH FUNCTION ---
-        // Call this whenever data changes to update both the table and the cards
         function refreshDashboard() {
             loadAnalytics();
             loadHistory();
         }
-
-        // Trigger on initial page load
         refreshDashboard();
 
-        // --- DELETE URL LOGIC ---
-        async function deleteUrl(urlId) {
-            if (!confirm("Are you sure you want to delete this link? This cannot be undone.")) return;
+        // --- NEW: MODAL LOGIC ---
+        function openStats(urlId) {
+            // Find the specific URL from our global memory
+            const targetUrl = globalUrls.find(u => u._id === urlId);
+            if (!targetUrl) return;
 
-            try {
-                const res = await fetch(`${BASE_URL}/api/${urlId}`, {
-                    method: 'DELETE',
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
-                if (res.ok) refreshDashboard(); // Update table AND numbers!
-            } catch (err) {
-                alert('Server error. Could not delete link.');
+            const browserCounts = {};
+            const osCounts = {};
+
+            // Tally up the data
+            targetUrl.clicks.forEach(click => {
+                const b = click.browser || 'Unknown';
+                const o = click.device || 'Unknown';
+                browserCounts[b] = (browserCounts[b] || 0) + 1;
+                osCounts[o] = (osCounts[o] || 0) + 1;
+            });
+
+            // Format HTML for the modal
+            const formatStats = (counts) => {
+                const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+                if (entries.length === 0) return '<div class="stat-row" style="color:#aaa;">No clicks yet.</div>';
+                return entries.map(([name, count]) => `
+                    <div class="stat-row">
+                        <span>${name}</span>
+                        <span style="color:#4fc3f7; font-weight:bold;">${count}</span>
+                    </div>
+                `).join('');
+            };
+
+            document.getElementById('browserStats').innerHTML = formatStats(browserCounts);
+            document.getElementById('osStats').innerHTML = formatStats(osCounts);
+            
+            document.getElementById('statsModal').classList.add('show');
+        }
+
+        function closeModal() {
+            document.getElementById('statsModal').classList.remove('show');
+        }
+
+        // Close modal if user clicks outside of it
+        window.onclick = function(event) {
+            const modal = document.getElementById('statsModal');
+            if (event.target === modal) {
+                closeModal();
             }
         }
 
-        // --- SHORTEN URL LOGIC ---
+        async function deleteUrl(urlId) {
+            if (!confirm("Are you sure you want to delete this link? This cannot be undone.")) return;
+            try {
+                const res = await fetch(`${BASE_URL}/api/${urlId}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` }});
+                if (res.ok) refreshDashboard();
+            } catch (err) { alert('Server error.'); }
+        }
+
         async function shortenUrl() {
             const originalUrl = document.getElementById('longUrl').value.trim();
             const customAlias = document.getElementById('customAlias').value.trim();
@@ -226,14 +269,9 @@
             const shortUrlResult = document.getElementById('shortUrlResult');
             const qrImg = document.getElementById('qrCodeImage');
             
-            errorMsg.classList.remove('show');
-            resultCard.style.display = 'none';
-            qrImg.style.display = 'none';
+            errorMsg.classList.remove('show'); resultCard.style.display = 'none'; qrImg.style.display = 'none';
 
-            if (!originalUrl) {
-                errorMsg.textContent = 'Please enter a valid URL';
-                errorMsg.classList.add('show'); return;
-            }
+            if (!originalUrl) { errorMsg.textContent = 'Please enter a valid URL'; errorMsg.classList.add('show'); return; }
 
             btn.disabled = true; btn.textContent = 'Generating...';
 
@@ -247,30 +285,20 @@
                 const data = await res.json();
                 if (!res.ok) { errorMsg.textContent = data.error || 'Failed to shorten link'; errorMsg.classList.add('show'); return; }
 
-                document.getElementById('longUrl').value = '';
-                document.getElementById('customAlias').value = '';
+                document.getElementById('longUrl').value = ''; document.getElementById('customAlias').value = '';
                 shortUrlResult.value = data.shortUrl;
                 
-                if (data.qrCode) {
-                    qrImg.src = data.qrCode;
-                    qrImg.style.display = 'block';
-                }
+                if (data.qrCode) { qrImg.src = data.qrCode; qrImg.style.display = 'block'; }
                 
                 resultCard.style.display = 'block';
-                refreshDashboard(); // Update table AND numbers!
+                refreshDashboard();
 
-            } catch (err) {
-                errorMsg.textContent = 'Server error. Is the backend running?';
-                errorMsg.classList.add('show');
-            } finally {
-                btn.disabled = false; btn.textContent = 'Shorten URL';
-            }
+            } catch (err) { errorMsg.textContent = 'Server error.'; errorMsg.classList.add('show');
+            } finally { btn.disabled = false; btn.textContent = 'Shorten URL'; }
         }
 
         function copyToClipboard() {
-            const copyText = document.getElementById("shortUrlResult");
-            copyText.select();
-            copyText.setSelectionRange(0, 99999); 
+            const copyText = document.getElementById("shortUrlResult"); copyText.select(); copyText.setSelectionRange(0, 99999); 
             navigator.clipboard.writeText(copyText.value);
             const copyBtn = document.querySelector('#resultCard .btn-outline');
             copyBtn.textContent = 'Copied!'; copyBtn.style.background = '#4fc3f7'; copyBtn.style.color = '#000';
