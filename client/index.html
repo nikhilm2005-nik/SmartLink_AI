@@ -15,8 +15,11 @@
         .card { background: #16213e; border-radius: 12px; padding: 28px; border: 1px solid #1e2d50; margin-bottom: 20px; }
         label { display: block; font-size: 12px; color: #aaa; margin-bottom: 5px; margin-top: 14px; }
         label:first-child { margin-top: 0; }
-        input { width: 100%; padding: 11px 14px; border-radius: 8px; border: 1px solid #2a3a5e; background: #0f0f1a; color: #e0e0e0; font-size: 14px; outline: none; transition: border 0.2s; }
-        input:focus { border-color: #4fc3f7; }
+        
+        /* UPDATED: Added 'select' so the dropdown matches the inputs */
+        input, select { width: 100%; padding: 11px 14px; border-radius: 8px; border: 1px solid #2a3a5e; background: #0f0f1a; color: #e0e0e0; font-size: 14px; outline: none; transition: border 0.2s; }
+        input:focus, select:focus { border-color: #4fc3f7; }
+        
         .btn { width: 100%; padding: 13px; border: none; border-radius: 8px; background: linear-gradient(135deg, #4fc3f7, #0288d1); color: #fff; font-size: 15px; font-weight: 600; cursor: pointer; transition: opacity 0.2s; }
         .btn:hover { opacity: 0.88; }
         .btn:disabled { opacity: 0.5; cursor: not-allowed; }
@@ -49,9 +52,12 @@
         .stat-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #1e2d50; font-size: 14px; }
         .stat-row:last-child { border-bottom: none; }
         
-        /* NEW: Utility Header */
         .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
         .search-input { width: 280px; padding: 8px 14px; margin-top: 0; }
+
+        /* NEW: Badge Styles */
+        .badge-expired { font-size: 10px; background: #ef5350; color: #fff; padding: 3px 6px; border-radius: 4px; margin-left: 8px; font-weight: bold; text-transform: uppercase; }
+        .badge-expires-soon { font-size: 10px; background: #ffa000; color: #fff; padding: 3px 6px; border-radius: 4px; margin-left: 8px; font-weight: bold; text-transform: uppercase; }
     </style>
 </head>
 <body>
@@ -77,10 +83,27 @@
 
         <div class="card">
             <h3 style="color:#fff; font-size:18px; margin-bottom: 16px;">Create a Short Link</h3>
-            <label>Destination URL</label>
-            <input type="url" id="longUrl" placeholder="https://example.com/my-super-long-link" required />
-            <label>Custom Alias (Optional)</label>
-            <input type="text" id="customAlias" placeholder="e.g., my-campaign" />
+            
+            <div style="display: flex; gap: 16px;">
+                <div style="flex: 2;">
+                    <label>Destination URL</label>
+                    <input type="url" id="longUrl" placeholder="https://example.com/my-super-long-link" required />
+                </div>
+                <div style="flex: 1;">
+                    <label>Custom Alias (Optional)</label>
+                    <input type="text" id="customAlias" placeholder="e.g., my-campaign" />
+                </div>
+                <div style="flex: 1;">
+                    <label>Expiration</label>
+                    <select id="expiresIn">
+                        <option value="">Never</option>
+                        <option value="1">1 Day</option>
+                        <option value="7">7 Days</option>
+                        <option value="30">30 Days</option>
+                    </select>
+                </div>
+            </div>
+            
             <button class="btn" onclick="shortenUrl()" style="margin-top: 20px;">Shorten URL</button>
             <p class="error-msg" id="errorMsg"></p>
         </div>
@@ -164,7 +187,6 @@
             } catch (err) { console.error(err); }
         }
 
-        // NEW: Dedicated table rendering logic
         function renderTable(urlsToDisplay) {
             const tbody = document.getElementById('linksTableBody');
             const noLinksMsg = document.getElementById('noLinksMsg');
@@ -174,7 +196,6 @@
             
             if (urlsToDisplay.length === 0) {
                 noLinksMsg.style.display = 'block'; 
-                // Dynamic message depending on if they are searching or just have no links
                 noLinksMsg.textContent = globalUrls.length === 0 ? "You haven't created any links yet." : "No links match your search.";
                 linksTable.style.display = 'none'; 
                 return;
@@ -187,10 +208,26 @@
                 const shortUrlFull = `${BASE_URL}/${url.shortCode}`;
                 const date = new Date(url.createdAt).toLocaleDateString();
                 
+                // NEW: Expiration logic
+                let badgeHtml = '';
+                if (url.expiresAt) {
+                    const expDate = new Date(url.expiresAt);
+                    if (new Date() > expDate) {
+                        badgeHtml = `<span class="badge-expired">Expired</span>`;
+                    } else {
+                        badgeHtml = `<span class="badge-expires-soon">Ends ${expDate.toLocaleDateString()}</span>`;
+                    }
+                }
+                
                 const tr = document.createElement('tr');
                 tr.innerHTML = `
                     <td><span class="truncate" title="${url.originalUrl}">${url.originalUrl}</span></td>
-                    <td><a href="${shortUrlFull}" target="_blank" class="short-link-text">${url.shortCode}</a></td>
+                    <td>
+                        <div style="display: flex; align-items: center;">
+                            <a href="${shortUrlFull}" target="_blank" class="short-link-text">${url.shortCode}</a>
+                            ${badgeHtml}
+                        </div>
+                    </td>
                     <td>${url.clicks.length}</td>
                     <td>${date}</td>
                     <td>
@@ -205,58 +242,40 @@
             });
         }
 
-        // UPDATED: Now it just fetches data and passes it to renderTable
         async function loadHistory() {
             try {
                 const res = await fetch(`${BASE_URL}/api/my-urls`, { headers: { 'Authorization': `Bearer ${token}` } });
                 if (!res.ok) throw new Error('Failed to fetch');
-                
                 globalUrls = await res.json(); 
-                
-                // If they have text in the search box, apply it immediately after load
                 filterLinks(); 
             } catch (err) { console.error(err); }
         }
 
-        // NEW: Real-time search filter function
         function filterLinks() {
             const query = document.getElementById('searchInput').value.toLowerCase();
-            
-            // Filter the global array based on the query
             const filteredUrls = globalUrls.filter(url => 
                 url.originalUrl.toLowerCase().includes(query) || 
                 url.shortCode.toLowerCase().includes(query)
             );
-            
-            // Draw the table with only the matched links
             renderTable(filteredUrls);
         }
 
-        function refreshDashboard() {
-            loadAnalytics();
-            loadHistory();
-        }
+        function refreshDashboard() { loadAnalytics(); loadHistory(); }
         refreshDashboard();
 
-        // --- MODAL LOGIC ---
         function openStats(urlId) {
             const targetUrl = globalUrls.find(u => u._id === urlId);
             if (!targetUrl) return;
-
             const browserCounts = {}; const osCounts = {};
             targetUrl.clicks.forEach(click => {
                 const b = click.browser || 'Unknown'; const o = click.device || 'Unknown';
                 browserCounts[b] = (browserCounts[b] || 0) + 1; osCounts[o] = (osCounts[o] || 0) + 1;
             });
-
             const formatStats = (counts) => {
                 const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]);
                 if (entries.length === 0) return '<div class="stat-row" style="color:#aaa;">No clicks yet.</div>';
-                return entries.map(([name, count]) => `
-                    <div class="stat-row"><span>${name}</span><span style="color:#4fc3f7; font-weight:bold;">${count}</span></div>
-                `).join('');
+                return entries.map(([name, count]) => `<div class="stat-row"><span>${name}</span><span style="color:#4fc3f7; font-weight:bold;">${count}</span></div>`).join('');
             };
-
             document.getElementById('browserStats').innerHTML = formatStats(browserCounts);
             document.getElementById('osStats').innerHTML = formatStats(osCounts);
             document.getElementById('statsModal').classList.add('show');
@@ -276,6 +295,9 @@
         async function shortenUrl() {
             const originalUrl = document.getElementById('longUrl').value.trim();
             const customAlias = document.getElementById('customAlias').value.trim();
+            // NEW: Get the expiration value
+            const expiresInVal = document.getElementById('expiresIn').value; 
+            
             const btn = document.querySelector('.btn'); const errorMsg = document.getElementById('errorMsg');
             const resultCard = document.getElementById('resultCard'); const shortUrlResult = document.getElementById('shortUrlResult');
             const qrImg = document.getElementById('qrCodeImage');
@@ -285,22 +307,29 @@
 
             btn.disabled = true; btn.textContent = 'Generating...';
 
+            // Construct payload dynamically so we only send expiresIn if they selected a timeframe
+            const payload = { originalUrl, customAlias };
+            if (expiresInVal) {
+                payload.expiresIn = parseInt(expiresInVal);
+            }
+
             try {
                 const res = await fetch(`${BASE_URL}/api/shorten`, {
                     method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                    body: JSON.stringify({ originalUrl, customAlias })
+                    body: JSON.stringify(payload)
                 });
                 
                 const data = await res.json();
                 if (!res.ok) { errorMsg.textContent = data.error || 'Failed to shorten link'; errorMsg.classList.add('show'); return; }
 
-                document.getElementById('longUrl').value = ''; document.getElementById('customAlias').value = '';
+                document.getElementById('longUrl').value = ''; 
+                document.getElementById('customAlias').value = '';
+                document.getElementById('expiresIn').value = ''; // Reset dropdown
+                
                 shortUrlResult.value = data.shortUrl;
                 if (data.qrCode) { qrImg.src = data.qrCode; qrImg.style.display = 'block'; }
                 
                 resultCard.style.display = 'block';
-                
-                // Clear the search box so they can see their new link
                 document.getElementById('searchInput').value = '';
                 refreshDashboard();
 
