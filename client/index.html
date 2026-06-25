@@ -40,7 +40,9 @@
         .short-link-text { color: #4fc3f7; text-decoration: none; font-weight: 600; }
         .short-link-text:hover { text-decoration: underline; }
         .truncate { max-width: 250px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: inline-block; vertical-align: middle; }
-        .btn-delete { background: none; border: none; color: #ef5350; cursor: pointer; font-size: 13px; text-decoration: underline; padding: 0; }
+        .btn-text { background: none; border: none; color: #4fc3f7; cursor: pointer; font-size: 13px; text-decoration: underline; padding: 0; }
+        .btn-text:hover { color: #0288d1; }
+        .btn-delete { color: #ef5350; }
         .btn-delete:hover { color: #d32f2f; }
 
         .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 1000; align-items: center; justify-content: center; backdrop-filter: blur(3px); }
@@ -152,7 +154,20 @@
                 <h4 style="color: #aaa; font-size: 12px; text-transform: uppercase; margin-bottom: 8px;">Top Devices/OS</h4>
                 <div id="osStats"></div>
             </div>
-            <button class="btn" onclick="closeModal()">Close Window</button>
+            <button class="btn" onclick="closeModal('statsModal')">Close Window</button>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="editModal">
+        <div class="modal-content">
+            <h3 style="color: #4fc3f7; margin-bottom: 20px;">Edit Destination URL</h3>
+            <label>New Destination</label>
+            <input type="url" id="editOriginalUrl" required />
+            <input type="hidden" id="editUrlId" />
+            <div style="display: flex; gap: 10px; margin-top: 20px;">
+                <button class="btn" onclick="submitEdit()">Save Changes</button>
+                <button class="btn-outline" style="width: 100%;" onclick="closeModal('editModal')">Cancel</button>
+            </div>
         </div>
     </div>
 
@@ -218,7 +233,8 @@
                         <div style="display: flex; gap: 12px; align-items: center;">
                             <button onclick="openStats('${url._id}')" class="btn-outline">Stats</button>
                             ${url.qrCode ? `<a href="${url.qrCode}" download="qr-${url.shortCode}.png" class="short-link-text" style="font-size:12px;">QR</a>` : ''}
-                            <button onclick="deleteUrl('${url._id}')" class="btn-delete">Delete</button>
+                            <button onclick="openEditModal('${url._id}', '${url.originalUrl}')" class="btn-text">Edit</button>
+                            <button onclick="deleteUrl('${url._id}')" class="btn-text btn-delete">Delete</button>
                         </div>
                     </td>
                 `;
@@ -246,39 +262,23 @@
         function refreshDashboard() { loadAnalytics(); loadHistory(); }
         refreshDashboard();
 
-        // --- NEW: EXPORT TO CSV LOGIC ---
         function exportToCSV() {
-            if (globalUrls.length === 0) {
-                alert("You don't have any links to export yet!");
-                return;
-            }
-
-            // Define the CSV Headers
-            let csvContent = "data:text/csv;charset=utf-8,";
-            csvContent += "Original URL,Short Code,Total Clicks,Creation Date,Expiration Date\n";
-
-            // Loop through data and build rows
+            if (globalUrls.length === 0) { alert("No data to export!"); return; }
+            let csvContent = "data:text/csv;charset=utf-8,Original URL,Short Code,Total Clicks,Creation Date,Expiration Date\n";
             globalUrls.forEach(url => {
                 const date = new Date(url.createdAt).toLocaleDateString();
                 const expDate = url.expiresAt ? new Date(url.expiresAt).toLocaleDateString() : "Never";
-                
-                // Wrap URLs in quotes to prevent commas inside the URL from breaking the columns
                 const safeUrl = `"${url.originalUrl.replace(/"/g, '""')}"`;
-                
-                const row = `${safeUrl},${url.shortCode},${url.clicks.length},${date},${expDate}`;
-                csvContent += row + "\n";
+                csvContent += `${safeUrl},${url.shortCode},${url.clicks.length},${date},${expDate}\n`;
             });
-
-            // Trigger the download
             const encodedUri = encodeURI(csvContent);
             const link = document.createElement("a");
             link.setAttribute("href", encodedUri);
             link.setAttribute("download", "smartlink_data_export.csv");
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
+            document.body.appendChild(link); link.click(); document.body.removeChild(link);
         }
 
+        // --- MODAL HANDLING ---
         function openStats(urlId) {
             const targetUrl = globalUrls.find(u => u._id === urlId);
             if (!targetUrl) return;
@@ -297,8 +297,52 @@
             document.getElementById('statsModal').classList.add('show');
         }
 
-        function closeModal() { document.getElementById('statsModal').classList.remove('show'); }
-        window.onclick = function(event) { const modal = document.getElementById('statsModal'); if (event.target === modal) closeModal(); }
+        function openEditModal(urlId, currentUrl) {
+            document.getElementById('editUrlId').value = urlId;
+            document.getElementById('editOriginalUrl').value = currentUrl;
+            document.getElementById('editModal').classList.add('show');
+        }
+
+        function closeModal(modalId) { 
+            document.getElementById(modalId).classList.remove('show'); 
+        }
+
+        window.onclick = function(event) { 
+            if (event.target.classList.contains('modal-overlay')) {
+                event.target.classList.remove('show');
+            }
+        }
+
+        // --- NEW: EDIT URL SUBMISSION ---
+        async function submitEdit() {
+            const urlId = document.getElementById('editUrlId').value;
+            const originalUrl = document.getElementById('editOriginalUrl').value.trim();
+
+            if (!originalUrl) {
+                alert("Please enter a valid URL.");
+                return;
+            }
+
+            try {
+                const res = await fetch(`${BASE_URL}/api/${urlId}`, { 
+                    method: 'PUT', 
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}` 
+                    },
+                    body: JSON.stringify({ originalUrl })
+                });
+                
+                if (res.ok) {
+                    closeModal('editModal');
+                    refreshDashboard(); // Instantly update the table with the new URL!
+                } else {
+                    alert('Failed to update URL. Please check your input.');
+                }
+            } catch (err) { 
+                alert('Server error.'); 
+            }
+        }
 
         async function deleteUrl(urlId) {
             if (!confirm("Are you sure you want to delete this link? This cannot be undone.")) return;
