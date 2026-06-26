@@ -23,7 +23,9 @@
         .btn:hover { opacity: 0.88; }
         .btn:disabled { opacity: 0.5; cursor: not-allowed; }
         .btn-outline { padding: 6px 14px; background: #1e2d50; color: #aaa; border: none; border-radius: 6px; cursor: pointer; font-size: 12px; transition: background 0.2s, color 0.2s; }
-        .btn-outline:hover { background: #2a3a5e; color: #fff; }
+        .btn-outline:hover:not(:disabled) { background: #2a3a5e; color: #fff; }
+        .btn-outline:disabled { opacity: 0.3; cursor: not-allowed; }
+        
         .error-msg { color: #ef5350; font-size: 13px; margin-top: 10px; display: none; }
         .error-msg.show { display: block; }
         
@@ -32,7 +34,7 @@
         .stat-title { font-size: 13px; color: #aaa; text-transform: uppercase; letter-spacing: 1px; }
         .stat-value { font-size: 36px; font-weight: 700; color: #4fc3f7; margin-top: 10px; }
         
-        .table-wrapper { overflow-x: auto; margin-top: 16px; }
+        .table-wrapper { overflow-x: auto; margin-top: 16px; min-height: 250px; }
         table { width: 100%; border-collapse: collapse; font-size: 13px; text-align: left; }
         th { padding: 14px 12px; background: #111a30; color: #4fc3f7; border-bottom: 2px solid #2a3a5e; font-weight: 600; }
         td { padding: 14px 12px; border-bottom: 1px solid #1e2d50; color: #e0e0e0; }
@@ -55,6 +57,10 @@
         .search-input { width: 250px; padding: 9px 14px; margin-top: 0; }
         .badge-expired { font-size: 10px; background: #ef5350; color: #fff; padding: 3px 6px; border-radius: 4px; margin-left: 8px; font-weight: bold; text-transform: uppercase; }
         .badge-expires-soon { font-size: 10px; background: #ffa000; color: #fff; padding: 3px 6px; border-radius: 4px; margin-left: 8px; font-weight: bold; text-transform: uppercase; }
+        
+        /* NEW: Pagination Styles */
+        .pagination-container { display: flex; justify-content: space-between; align-items: center; margin-top: 20px; border-top: 1px solid #1e2d50; padding-top: 15px; }
+        .page-info { font-size: 13px; color: #aaa; }
     </style>
 </head>
 <body>
@@ -140,6 +146,12 @@
                 </table>
             </div>
             <p id="noLinksMsg" style="color: #aaa; font-size: 13px; margin-top: 15px; display: none; text-align: center;">You haven't created any links yet.</p>
+            
+            <div class="pagination-container" id="paginationControls" style="display: none;">
+                <button class="btn-outline" id="prevPageBtn" onclick="changePage(-1)">Previous</button>
+                <span class="page-info" id="pageInfo">Page 1 of 1</span>
+                <button class="btn-outline" id="nextPageBtn" onclick="changePage(1)">Next</button>
+            </div>
         </div>
     </div>
 
@@ -179,7 +191,11 @@
         const user = JSON.parse(localStorage.getItem('smartlink_user') || '{}');
         if (user.name) document.getElementById('navUser').textContent = user.name;
 
+        // --- NEW: Pagination Variables ---
         let globalUrls = [];
+        let currentFilteredUrls = []; // The search results we are currently paging through
+        let currentPage = 1;
+        const rowsPerPage = 5; // Change this to 10 or 20 for a real app!
 
         function logout() {
             localStorage.removeItem('smartlink_token');
@@ -198,20 +214,45 @@
             } catch (err) { console.error(err); }
         }
 
-        function renderTable(urlsToDisplay) {
+        // --- UPDATED: renderTable now handles slices of the array ---
+        function renderTable() {
             const tbody = document.getElementById('linksTableBody');
             const noLinksMsg = document.getElementById('noLinksMsg');
             const linksTable = document.getElementById('linksTable');
+            const paginationControls = document.getElementById('paginationControls');
             
             tbody.innerHTML = ''; 
-            if (urlsToDisplay.length === 0) {
+            
+            if (currentFilteredUrls.length === 0) {
                 noLinksMsg.style.display = 'block'; 
                 noLinksMsg.textContent = globalUrls.length === 0 ? "You haven't created any links yet." : "No links match your search.";
-                linksTable.style.display = 'none'; return;
+                linksTable.style.display = 'none'; 
+                paginationControls.style.display = 'none';
+                return;
             }
             
-            linksTable.style.display = 'table'; noLinksMsg.style.display = 'none';
+            linksTable.style.display = 'table'; 
+            noLinksMsg.style.display = 'none';
+            paginationControls.style.display = 'flex';
 
+            // Pagination Math
+            const totalPages = Math.ceil(currentFilteredUrls.length / rowsPerPage);
+            
+            // Safety check: if searching causes currentPage to be higher than total pages, reset to page 1
+            if (currentPage > totalPages) currentPage = 1;
+
+            const startIndex = (currentPage - 1) * rowsPerPage;
+            const endIndex = startIndex + rowsPerPage;
+            
+            // Grab only the 5 URLs for the current page
+            const urlsToDisplay = currentFilteredUrls.slice(startIndex, endIndex);
+
+            // Update UI text and buttons
+            document.getElementById('pageInfo').textContent = `Page ${currentPage} of ${totalPages}`;
+            document.getElementById('prevPageBtn').disabled = currentPage === 1;
+            document.getElementById('nextPageBtn').disabled = currentPage === totalPages;
+
+            // Draw the 5 rows
             urlsToDisplay.forEach(url => {
                 const shortUrlFull = `${BASE_URL}/${url.shortCode}`;
                 const date = new Date(url.createdAt).toLocaleDateString();
@@ -242,21 +283,32 @@
             });
         }
 
+        // --- NEW: Change Page Trigger ---
+        function changePage(direction) {
+            currentPage += direction;
+            renderTable();
+        }
+
         async function loadHistory() {
             try {
                 const res = await fetch(`${BASE_URL}/api/my-urls`, { headers: { 'Authorization': `Bearer ${token}` } });
                 if (!res.ok) throw new Error('Failed to fetch');
                 globalUrls = await res.json(); 
-                filterLinks(); 
+                filterLinks(); // This populates currentFilteredUrls
             } catch (err) { console.error(err); }
         }
 
         function filterLinks() {
             const query = document.getElementById('searchInput').value.toLowerCase();
-            const filteredUrls = globalUrls.filter(url => 
+            
+            // Save the results to our tracking variable
+            currentFilteredUrls = globalUrls.filter(url => 
                 url.originalUrl.toLowerCase().includes(query) || url.shortCode.toLowerCase().includes(query)
             );
-            renderTable(filteredUrls);
+            
+            // Reset to page 1 every time they type a new search
+            currentPage = 1;
+            renderTable();
         }
 
         function refreshDashboard() { loadAnalytics(); loadHistory(); }
@@ -273,12 +325,10 @@
             });
             const encodedUri = encodeURI(csvContent);
             const link = document.createElement("a");
-            link.setAttribute("href", encodedUri);
-            link.setAttribute("download", "smartlink_data_export.csv");
+            link.setAttribute("href", encodedUri); link.setAttribute("download", "smartlink_data_export.csv");
             document.body.appendChild(link); link.click(); document.body.removeChild(link);
         }
 
-        // --- MODAL HANDLING ---
         function openStats(urlId) {
             const targetUrl = globalUrls.find(u => u._id === urlId);
             if (!targetUrl) return;
@@ -303,45 +353,21 @@
             document.getElementById('editModal').classList.add('show');
         }
 
-        function closeModal(modalId) { 
-            document.getElementById(modalId).classList.remove('show'); 
-        }
+        function closeModal(modalId) { document.getElementById(modalId).classList.remove('show'); }
+        window.onclick = function(event) { if (event.target.classList.contains('modal-overlay')) event.target.classList.remove('show'); }
 
-        window.onclick = function(event) { 
-            if (event.target.classList.contains('modal-overlay')) {
-                event.target.classList.remove('show');
-            }
-        }
-
-        // --- NEW: EDIT URL SUBMISSION ---
         async function submitEdit() {
             const urlId = document.getElementById('editUrlId').value;
             const originalUrl = document.getElementById('editOriginalUrl').value.trim();
-
-            if (!originalUrl) {
-                alert("Please enter a valid URL.");
-                return;
-            }
-
+            if (!originalUrl) { alert("Please enter a valid URL."); return; }
             try {
                 const res = await fetch(`${BASE_URL}/api/${urlId}`, { 
-                    method: 'PUT', 
-                    headers: { 
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${token}` 
-                    },
+                    method: 'PUT', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
                     body: JSON.stringify({ originalUrl })
                 });
-                
-                if (res.ok) {
-                    closeModal('editModal');
-                    refreshDashboard(); // Instantly update the table with the new URL!
-                } else {
-                    alert('Failed to update URL. Please check your input.');
-                }
-            } catch (err) { 
-                alert('Server error.'); 
-            }
+                if (res.ok) { closeModal('editModal'); refreshDashboard(); } 
+                else { alert('Failed to update URL. Please check your input.'); }
+            } catch (err) { alert('Server error.'); }
         }
 
         async function deleteUrl(urlId) {
@@ -365,7 +391,6 @@
             if (!originalUrl) { errorMsg.textContent = 'Please enter a valid URL'; errorMsg.classList.add('show'); return; }
 
             btn.disabled = true; btn.textContent = 'Generating...';
-
             const payload = { originalUrl, customAlias };
             if (expiresInVal) payload.expiresIn = parseInt(expiresInVal);
 
@@ -374,7 +399,6 @@
                     method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
                     body: JSON.stringify(payload)
                 });
-                
                 const data = await res.json();
                 if (!res.ok) { errorMsg.textContent = data.error || 'Failed to shorten link'; errorMsg.classList.add('show'); return; }
 
@@ -383,6 +407,9 @@
                 if (data.qrCode) { qrImg.src = data.qrCode; qrImg.style.display = 'block'; }
                 
                 resultCard.style.display = 'block'; document.getElementById('searchInput').value = '';
+                
+                // Jump back to page 1 to see the new link
+                currentPage = 1;
                 refreshDashboard();
 
             } catch (err) { errorMsg.textContent = 'Server error.'; errorMsg.classList.add('show');
