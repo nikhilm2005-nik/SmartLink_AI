@@ -6,7 +6,8 @@ const UAParser = require('ua-parser-js');
 // POST /api/shorten (protected route)
 const shortenUrl = async (req, res) => {
     try {
-        const { originalUrl, customAlias, expiresIn } = req.body;
+        // NEW: We now extract the color variables from the request body
+        const { originalUrl, customAlias, expiresIn, qrFgColor, qrBgColor } = req.body;
 
         if (!originalUrl) {
             return res.status(400).json({ error: 'URL is required' });
@@ -22,17 +23,21 @@ const shortenUrl = async (req, res) => {
         const shortUrl = `${process.env.BASE_URL}/${shortCode}`;
         const expiresAt = expiresIn ? new Date(Date.now() + expiresIn * 24 * 60 * 60 * 1000) : null;
 
-        // NEW: Generate the QR Code as a Base64 Data URI
-        const qrCodeData = await QRCode.toDataURL(shortUrl);
+        // NEW: Generate the QR Code with custom colors
+        const qrCodeData = await QRCode.toDataURL(shortUrl, {
+            color: {
+                dark: qrFgColor || '#000000',  // The dots (default black)
+                light: qrBgColor || '#ffffff' // The background (default white)
+            }
+        });
 
-        // Save to database
         const url = await Url.create({
             userId: req.user._id,
             originalUrl,
             shortCode,
             customAlias: customAlias || null,
             expiresAt,
-            qrCode: qrCodeData // <-- NEW: Save it to the DB!
+            qrCode: qrCodeData 
         });
 
         res.status(201).json({ 
@@ -40,7 +45,7 @@ const shortenUrl = async (req, res) => {
             shortCode, 
             originalUrl,
             title: url.title,
-            qrCode: url.qrCode // <-- NEW: Send it back to the frontend
+            qrCode: url.qrCode 
         });
 
     } catch (err) {
@@ -147,6 +152,35 @@ const getAnalytics = async (req, res) => {
     }
 };
 
-module.exports = { shortenUrl, getUserUrls, redirectUrl, deleteUrl, getAnalytics };
+// PUT /api/:id (Protected)
+const updateUrl = async (req, res) => {
+    try {
+        const { originalUrl } = req.body;
+
+        if (!originalUrl) {
+            return res.status(400).json({ error: 'New destination URL is required' });
+        }
+
+        // Find the URL by ID and ensure the user owns it, then update it
+        const url = await Url.findOneAndUpdate(
+            { _id: req.params.id, userId: req.user._id },
+            { originalUrl: originalUrl },
+            { new: true } // This tells Mongoose to return the updated document
+        );
+
+        if (!url) {
+            return res.status(404).json({ error: 'URL not found or unauthorized' });
+        }
+
+        res.json({ message: 'URL updated successfully', url });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Server error while updating URL' });
+    }
+};
+
+
+module.exports = { shortenUrl, getUserUrls, redirectUrl, deleteUrl, getAnalytics, updateUrl };
+
 
 
