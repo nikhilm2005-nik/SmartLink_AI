@@ -22,7 +22,11 @@ app.use('/api', require('./routes/url.routes'));
 app.use('/', require('./routes/redirect.routes'));
 
 const PORT = process.env.PORT || 5000;
-
 app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
+    console.log(`\n Server is successfully running on port ${PORT}`);
+    console.log(`--------------------------------------------------`);
+    console.log(` Dashboard : http://localhost:${PORT}/index.html`);
+    console.log(` Login     : http://localhost:${PORT}/login.html`);
+    console.log(` Register  : http://localhost:${PORT}/register.html`);
+    console.log(`--------------------------------------------------\n`);
 });
