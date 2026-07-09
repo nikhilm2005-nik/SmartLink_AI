@@ -26,7 +26,6 @@ const urlSchema = new mongoose.Schema({
 });
 
 // Database indexes make searching insanely fast
-urlSchema.index({ shortCode: 1 });
 urlSchema.index({ userId: 1 }); // Fast lookup of all user's links
 
 module.exports = mongoose.model('Url', urlSchema);
