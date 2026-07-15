@@ -1,12 +1,13 @@
 const express = require('express');
 const router = express.Router();
-const { shortenUrl, getUserUrls, deleteUrl, getAnalytics, updateUrl } = require('../controllers/url.controller');
+const { shortenUrl, getMyLinks, deleteUrl } = require('../controllers/url.controller');
+const checkMalicious = require('../middleware/urlChecker');
+const limiter = require('../middleware/rateLimiter');
 const { protect } = require('../middleware/auth.middleware');
 
-router.post('/shorten', protect, shortenUrl);
-router.get('/my-urls', protect, getUserUrls);
-router.delete('/:id', protect, deleteUrl);
-router.get('/analytics', protect, getAnalytics);
-router.put('/:id', protect, updateUrl);
+// All URL routes require login
+router.post('/shorten', protect, limiter, checkMalicious, shortenUrl);
+router.get('/my-links', protect, getMyLinks);
+router.delete('/url/:shortCode', protect, deleteUrl);
 
 module.exports = router;
