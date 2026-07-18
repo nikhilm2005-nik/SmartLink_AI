@@ -9,5 +9,6 @@ const { protect } = require('../middleware/auth.middleware');
 router.post('/shorten', protect, limiter, checkMalicious, shortenUrl);
 router.get('/my-links', protect, getMyLinks);
 router.delete('/url/:shortCode', protect, deleteUrl);
+router.put('/url/:shortCode', protect, updateUrl);
 
 module.exports = router;
