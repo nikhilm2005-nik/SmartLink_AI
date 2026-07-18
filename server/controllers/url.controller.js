@@ -124,4 +124,32 @@ const logClick = async (shortCode, req) => {
     }
 };
 
-module.exports = { shortenUrl, redirectUrl, getMyLinks, deleteUrl };
+// PUT /api/url/:shortCode - dynamically update destination
+const updateUrl = async (req, res) => {
+    try {
+        const { originalUrl } = req.body;
+        const { shortCode } = req.params;
+
+        if (!originalUrl) {
+            return res.status(400).json({ error: 'New destination URL is required' });
+        }
+
+        const url = await Url.findOneAndUpdate(
+            { shortCode, userId: req.user._id },
+            { originalUrl },
+            { new: true }
+        );
+
+        if (!url) return res.status(404).json({ error: 'URL not found or unauthorized' });
+
+        // Update the Redis cache immediately so traffic routes correctly
+        await redis.setex(shortCode, 86400, originalUrl);
+
+        res.json({ message: 'URL updated successfully', url });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ error: 'Server error while updating URL' });
+    }
+};
+
+module.exports = { shortenUrl, redirectUrl, getMyLinks, deleteUrl, updateUrl };
