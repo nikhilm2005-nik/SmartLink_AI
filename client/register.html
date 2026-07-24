@@ -3,52 +3,19 @@
 <head>
     <meta charset="UTF-8"/>
     <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-    <title>SmartLink AI - Register</title>
+    <title>SmartLink AI Register</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
-        body {
-            font-family: 'Segoe UI', sans-serif;
-            background: #0f0f1a;
-            color: #e0e0e0;
-            min-height: 100vh;
-        }
-        .navbar {
-            background: #16213e;
-            padding: 16px 32px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            border-bottom: 1px solid #1a1a3e;
-        }
+        body { font-family: 'Segoe UI', sans-serif; background: #0f0f1a; color: #e0e0e0; min-height: 100vh; }
+        .navbar { background: #16213e; padding: 16px 32px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #1a1a3e; }
         .navbar-brand { font-size: 20px; color: #4fc3f7; font-weight: 700; }
-        .container { max-width: 420px; margin: 60px auto; padding: 24px 20px; }
-        .card {
-            background: #16213e;
-            border-radius: 12px;
-            padding: 28px;
-            border: 1px solid #1e2d50;
-        }
-        label {
-            display: block; font-size: 12px; color: #aaa;
-            margin-bottom: 5px; margin-top: 14px;
-        }
-        label:first-child { margin-top: 0; }
-        input {
-            width: 100%; padding: 11px 14px; border-radius: 8px;
-            border: 1px solid #2a3a5e; background: #0f0f1a;
-            color: #e0e0e0; font-size: 14px; outline: none;
-            transition: border 0.2s;
-        }
+        .container { max-width: 720px; margin: 0 auto; padding: 24px 20px; }
+        .card { background: #16213e; border-radius: 12px; padding: 28px; border: 1px solid #1e2d50; margin-bottom: 20px; }
+        label { display: block; font-size: 12px; color: #aaa; margin-bottom: 5px; margin-top: 14px; }
+        input { width: 100%; padding: 11px 14px; border-radius: 8px; border: 1px solid #2a3a5e; background: #0f0f1a; color: #e0e0e0; font-size: 14px; outline: none; transition: border 0.2s; }
         input:focus { border-color: #4fc3f7; }
-        .btn {
-            width: 100%; margin-top: 18px; padding: 13px;
-            border: none; border-radius: 8px;
-            background: linear-gradient(135deg, #4fc3f7, #0288d1);
-            color: #fff; font-size: 15px; font-weight: 600;
-            cursor: pointer; transition: opacity 0.2s;
-        }
+        .btn { width: 100%; margin-top: 18px; padding: 13px; border: none; border-radius: 8px; background: linear-gradient(135deg, #4fc3f7, #0288d1); color: #fff; font-size: 15px; font-weight: 600; cursor: pointer; }
         .btn:hover { opacity: 0.88; }
-        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
         .error-msg { color: #ef5350; font-size: 13px; margin-top: 10px; display: none; }
         .error-msg.show { display: block; }
         .success-msg { color: #81c784; font-size: 13px; margin-top: 10px; display: none; }
@@ -61,37 +28,26 @@
     <div class="navbar">
         <span class="navbar-brand">SmartLink AI</span>
     </div>
-    
-    <div class="container">
+    <div class="container" style="max-width:420px; margin-top:60px;">
         <div class="card">
             <h2 style="font-size:20px;color:#fff;margin-bottom:4px;">Create Account</h2>
             <p style="font-size:13px;color: #aaa;margin-bottom:16px;">
                 Already have an account? <a href="login.html">Login</a>
             </p>
-            
             <label>Full Name</label>
             <input type="text" id="name" placeholder="Your name"/>
-            
             <label>Email</label>
             <input type="email" id="email" placeholder="you@example.com"/>
-            
             <label>Password (min 6 chars)</label>
-            <input type="password" id="password" placeholder="••••••••"/>
-            
+            <input type="password" id="password" placeholder="........"/>
             <button class="btn" onclick="register()">Create Account</button>
-            
             <p class="error-msg" id="errorMsg"></p>
             <p class="success-msg" id="successMsg"></p>
         </div>
     </div>
-
     <script>
         const BASE_URL = 'http://localhost:5000';
-
-        // If already logged in, redirect to dashboard (we will build this later)
-        if (localStorage.getItem('smartlink_token')) {
-            window.location.href = 'index.html';
-        }
+        if (localStorage.getItem('smartlink_token')) window.location.href = 'index.html';
 
         async function register() {
             const name = document.getElementById('name').value.trim();
@@ -99,56 +55,38 @@
             const password = document.getElementById('password').value;
             const btn = document.querySelector('.btn');
             
-            hideMessages();
-
+            document.getElementById('errorMsg').classList.remove('show');
+            document.getElementById('successMsg').classList.remove('show');
+            
             if (!name || !email || !password) {
-                showError('All fields are required');
+                document.getElementById('errorMsg').textContent = 'All fields are required';
+                document.getElementById('errorMsg').classList.add('show');
                 return;
             }
-
             btn.disabled = true;
             btn.textContent = 'Creating account...';
-
             try {
                 const res = await fetch(`${BASE_URL}/api/auth/register`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ name, email, password })
                 });
-                
                 const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Registration failed');
                 
-                if (!res.ok) { 
-                    showError(data.error || 'Registration failed'); 
-                    return; 
-                }
-
-                // Save token and redirect
                 localStorage.setItem('smartlink_token', data.token);
                 localStorage.setItem('smartlink_user', JSON.stringify(data.user));
                 
-                showSuccess('Account created! Redirecting...');
+                document.getElementById('successMsg').textContent = 'Account created! Redirecting...';
+                document.getElementById('successMsg').classList.add('show');
                 setTimeout(() => window.location.href = 'index.html', 1200);
-
             } catch (err) {
-                showError('Server error. Is the backend running?');
+                document.getElementById('errorMsg').textContent = err.message;
+                document.getElementById('errorMsg').classList.add('show');
             } finally {
                 btn.disabled = false;
                 btn.textContent = 'Create Account';
             }
-        }
-
-        function showError(msg) {
-            document.getElementById('errorMsg').textContent = msg;
-            document.getElementById('errorMsg').classList.add('show');
-        }
-        function showSuccess(msg) {
-            document.getElementById('successMsg').textContent = msg;
-            document.getElementById('successMsg').classList.add('show');
-        }
-        function hideMessages() {
-            document.getElementById('errorMsg').classList.remove('show');
-            document.getElementById('successMsg').classList.remove('show');
         }
     </script>
 </body>
