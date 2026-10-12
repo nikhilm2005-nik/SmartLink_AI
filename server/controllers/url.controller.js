@@ -80,7 +80,6 @@ const redirectUrl = async (req, res) => {
 const getMyLinks = async (req, res) => {
     try {
         const urls = await Url.find({ userId: req.user._id })
-            .select('-clicks') // exclude click array for performance
             .sort({ createdAt: -1 });
         res.json({ count: urls.length, urls });
     } catch (err) {
