@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { shortenUrl, getMyLinks, deleteUrl } = require('../controllers/url.controller');
+const { shortenUrl, getMyLinks, deleteUrl, updateUrl } = require('../controllers/url.controller');
 const checkMalicious = require('../middleware/urlChecker');
 const limiter = require('../middleware/rateLimiter');
 const { protect } = require('../middleware/auth.middleware');
