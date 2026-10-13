@@ -49,32 +49,40 @@ const shortenUrl = async (req, res) => {
     }
 };
 
-// GET /:shortCode - public redirect (no auth needed)
+// the expiration will be checked before redirection from redis
 const redirectUrl = async (req, res) => {
     try {
         const { shortCode } = req.params;
-        
-        // Redis cache first
-        const cached = await redis.get(shortCode);
-        if (cached) {
-            logClick(shortCode, req);
-            return res.redirect(cached);
-        }
-        
-        // MongoDB fallback
+
+        // Load expiry information from MongoDB first.
         const url = await Url.findOne({ shortCode });
-        if (!url) return res.status(404).json({ error: 'Link not found' });
-        if (url.expiresAt && url.expiresAt < new Date()) {
-            return res.status(410).json({ error: 'This link has expired' });
+
+        if (!url) {
+            return res.status(404).send('Short link not found');
         }
-        
-        await redis.setex(shortCode, 86400, url.originalUrl);
+
+        // Never redirect an expired link, even if it is cached.
+        if (url.expiresAt && url.expiresAt <= new Date()) {
+            await redis.del(shortCode);
+            return res.status(410).send('This short link has expired');
+        }
+
+        // Use the cache only after confirming the link is valid.
+        const cached = await redis.get(shortCode);
+
+        if (!cached) {
+            await redis.setex(shortCode, 86400, url.originalUrl);
+        }
+
         logClick(shortCode, req);
-        res.redirect(url.originalUrl);
-    } catch (err) {
-        res.status(500).json({ error: 'Server error' });
+        return res.redirect(cached || url.originalUrl);
+
+    } catch (error) {
+        console.error('Redirect error:', error);
+        return res.status(500).send('Internal server error');
     }
 };
+
 
 // GET /api/my-links - get all links for logged in user
 const getMyLinks = async (req, res) => {
