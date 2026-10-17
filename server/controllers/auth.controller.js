@@ -39,6 +39,12 @@ const register = async (req, res) => {
             user: { id: user._id, name: user.name, email: user.email }
         });
     } catch (err) {
+
+        if (err.code === 11000) {
+            return res.status(409).json({
+                error: 'Email already registered'
+            });
+        }
         console.error(err);
         res.status(500).json({ error: 'Server error' });
     }
@@ -53,8 +59,8 @@ const login = async (req, res) => {
             return res.status(400).json({ error: 'Email and password are required' });
         }
 
-        // Find user
-        const user = await User.findOne({ email });
+        // Find user and explicitly include the password hash for comparison
+        const user = await User.findOne({ email }).select('+password');
         if (!user) {
             return res.status(401).json({ error: 'Invalid email or password' });
         }
