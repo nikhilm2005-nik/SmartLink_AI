@@ -1,96 +1,169 @@
+
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 
-// Helper function to generate JWT token
+// Generate JWT token
 const generateToken = (userId) => {
-    return jwt.sign({ id: userId }, process.env.JWT_SECRET, {
-        expiresIn: process.env.JWT_EXPIRES_IN || '7d'
-    });
+    if (!process.env.JWT_SECRET) {
+        throw new Error('JWT_SECRET is not configured.');
+    }
+
+    return jwt.sign(
+        { id: userId },
+        process.env.JWT_SECRET,
+        {
+            expiresIn: process.env.JWT_EXPIRES_IN || '7d'
+        }
+    );
 };
 
 // POST /api/auth/register
 const register = async (req, res) => {
     try {
-        const { name, email, password } = req.body;
+        const { name, email, password } = req.body || {};
 
-        if (!name || !email || !password) {
-            return res.status(400).json({ error: 'All fields are required' });
+        // Validate input types
+        if (
+            typeof name !== 'string' ||
+            typeof email !== 'string' ||
+            typeof password !== 'string'
+        ) {
+            return res.status(400).json({
+                error: 'Name, email, and password must be provided as strings.'
+            });
+        }
+
+        // Normalize input
+        const normalizedName = name.trim();
+        const normalizedEmail = email.trim().toLowerCase();
+
+        if (!normalizedName || !normalizedEmail || !password) {
+            return res.status(400).json({
+                error: 'All fields are required.'
+            });
         }
 
         if (password.length < 6) {
-            return res.status(400).json({ error: 'Password must be at least 6 characters' });
-        }
-
-        // Check if email already registered
-        const existingUser = await User.findOne({ email });
-        if (existingUser) {
-            return res.status(400).json({ error: 'Email already registered' });
-        }
-
-        // Create user (password is automatically hashed by our Mongoose pre-save hook from Day 2)
-        const user = await User.create({ name, email, password });
-
-        // Generate token
-        const token = generateToken(user._id);
-
-        res.status(201).json({
-            message: 'Account created successfully',
-            token,
-            user: { id: user._id, name: user.name, email: user.email }
-        });
-    } catch (err) {
-
-        if (err.code === 11000) {
-            return res.status(409).json({
-                error: 'Email already registered'
+            return res.status(400).json({
+                error: 'Password must be at least 6 characters.'
             });
         }
-        console.error(err);
-        res.status(500).json({ error: 'Server error' });
+
+        // Check whether email is already registered
+        const existingUser = await User.findOne({
+            email: normalizedEmail
+        });
+
+        if (existingUser) {
+            return res.status(409).json({
+                error: 'Email already registered.'
+            });
+        }
+
+        // Password is hashed by the User model's pre-save hook
+        const user = await User.create({
+            name: normalizedName,
+            email: normalizedEmail,
+            password
+        });
+
+        const token = generateToken(user._id);
+
+        return res.status(201).json({
+            message: 'Account created successfully.',
+            token,
+            user: {
+                id: user._id,
+                name: user.name,
+                email: user.email
+            }
+        });
+    } catch (err) {
+        if (err.code === 11000) {
+            return res.status(409).json({
+                error: 'Email already registered.'
+            });
+        }
+
+        console.error('Registration failed:', err.message);
+
+        return res.status(500).json({
+            error: 'Server error.'
+        });
     }
 };
 
 // POST /api/auth/login
 const login = async (req, res) => {
     try {
-        const { email, password } = req.body;
+        const { email, password } = req.body || {};
 
-        if (!email || !password) {
-            return res.status(400).json({ error: 'Email and password are required' });
+        // Validate input types and required fields
+        if (
+            typeof email !== 'string' ||
+            typeof password !== 'string' ||
+            !email.trim() ||
+            !password
+        ) {
+            return res.status(400).json({
+                error: 'Email and password are required.'
+            });
         }
 
-        // Find user and explicitly include the password hash for comparison
-        const user = await User.findOne({ email }).select('+password');
+        const normalizedEmail = email.trim().toLowerCase();
+
+        // Explicitly select password because User schema uses select: false
+        const user = await User.findOne({
+            email: normalizedEmail
+        }).select('+password');
+
         if (!user) {
-            return res.status(401).json({ error: 'Invalid email or password' });
+            return res.status(401).json({
+                error: 'Invalid email or password.'
+            });
         }
 
-        // Compare password (uses the method we defined in User model)
         const isMatch = await user.comparePassword(password);
+
         if (!isMatch) {
-            return res.status(401).json({ error: 'Invalid email or password' });
+            return res.status(401).json({
+                error: 'Invalid email or password.'
+            });
         }
 
-        // Generate token
         const token = generateToken(user._id);
 
-        res.json({
-            message: 'Login successful',
+        return res.status(200).json({
+            message: 'Login successful.',
             token,
-            user: { id: user._id, name: user.name, email: user.email }
+            user: {
+                id: user._id,
+                name: user.name,
+                email: user.email
+            }
         });
     } catch (err) {
-        console.error(err);
-        res.status(500).json({ error: 'Server error' });
+        console.error('Login failed:', err.message);
+
+        return res.status(500).json({
+            error: 'Server error.'
+        });
     }
 };
 
-// GET /api/auth/me - get logged in user profile
+// GET /api/auth/me
 const getMe = async (req, res) => {
-    // req.user will be populated by our middleware
-    res.json({
-        user: { id: req.user._id, name: req.user.name, email: req.user.email }
+    return res.status(200).json({
+        user: {
+            id: req.user._id,
+            name: req.user.name,
+            email: req.user.email
+        }
     });
 };
 
-module.exports = { register, login, getMe }; 
+module.exports = {
+    register,
+    login,
+    getMe
+};
