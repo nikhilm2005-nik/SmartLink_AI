@@ -1,162 +1,330 @@
+
 const { nanoid } = require('nanoid');
 const Url = require('../models/Url');
 const redis = require('../config/redis');
 const { generateMetadata } = require('../services/groq.service');
 const { generateQRCode } = require('../services/qr.service');
 
-// POST /api/shorten (protected route requires login)
+// Validate HTTP/HTTPS destinations.
+const isValidHttpUrl = (value) => {
+    if (typeof value !== 'string' || !value.trim()) {
+        return false;
+    }
+
+    try {
+        const parsed = new URL(value.trim());
+
+        return (
+            (parsed.protocol === 'http:' || parsed.protocol === 'https:') &&
+            Boolean(parsed.hostname) &&
+            !parsed.username &&
+            !parsed.password
+        );
+    } catch {
+        return false;
+    }
+};
+
+// Redis is a cache, so cache failures should not necessarily fail
+// operations that have already succeeded in MongoDB.
+const cacheUrl = async (shortCode, originalUrl) => {
+    try {
+        await redis.setex(shortCode, 86400, originalUrl);
+    } catch (err) {
+        console.error('Redis cache write failed:', err.message);
+    }
+};
+
+const clearCachedUrl = async (shortCode) => {
+    try {
+        await redis.del(shortCode);
+    } catch (err) {
+        console.error('Redis cache deletion failed:', err.message);
+    }
+};
+
+// POST /api/shorten
 const shortenUrl = async (req, res) => {
     try {
-        const { originalUrl, customAlias, expiresIn } = req.body;
-        if (!originalUrl) {
-            return res.status(400).json({ error: 'URL is required' });
+        const { originalUrl, customAlias, expiresIn } = req.body || {};
+
+        if (typeof originalUrl !== 'string' || !originalUrl.trim()) {
+            return res.status(400).json({ error: 'URL is required.' });
         }
-        const shortCode = customAlias || nanoid(6);
-        
-        // Check alias availability
+
+        const destination = originalUrl.trim();
+
+        if (!isValidHttpUrl(destination)) {
+            return res.status(400).json({
+                error: 'Please provide a valid HTTP or HTTPS URL.'
+            });
+        }
+
+        const hasCustomAlias =
+            customAlias !== undefined &&
+            customAlias !== null &&
+            customAlias !== '';
+
+        if (
+            hasCustomAlias &&
+            (
+                typeof customAlias !== 'string' ||
+                !/^[a-zA-Z0-9_-]{3,30}$/.test(customAlias)
+            )
+        ) {
+            return res.status(400).json({
+                error: 'Custom alias must be 3–30 characters and contain only letters, numbers, hyphens, or underscores.'
+            });
+        }
+
+        let expiryDays = null;
+
+        if (expiresIn !== undefined && expiresIn !== null) {
+            if (
+                expiresIn === '' ||
+                !Number.isInteger(Number(expiresIn)) ||
+                Number(expiresIn) < 1 ||
+                Number(expiresIn) > 365
+            ) {
+                return res.status(400).json({
+                    error: 'Expiry must be a whole number of days between 1 and 365.'
+                });
+            }
+
+            expiryDays = Number(expiresIn);
+        }
+
+        const shortCode = hasCustomAlias ? customAlias : nanoid(6);
+
         const existing = await Url.findOne({ shortCode });
+
         if (existing) {
-            return res.status(400).json({ error: 'Alias already taken' });
+            return res.status(409).json({ error: 'Alias already taken.' });
         }
-        
-        const shortUrl = `${process.env.BASE_URL}/${shortCode}`;
-        
-        // Run Groq metadata & QR code generation in parallel (faster)
+
+        const baseUrl = process.env.BASE_URL;
+
+        if (!baseUrl) {
+            console.error('BASE_URL is not configured.');
+
+            return res.status(500).json({
+                error: 'URL shortening is temporarily unavailable.'
+            });
+        }
+
+        const shortUrl = `${baseUrl.replace(/\/+$/, '')}/${shortCode}`;
+
+        // Metadata and QR code generation run concurrently.
+        // Failures here are caught by the outer handler.
         const [{ title, description }, qrCode] = await Promise.all([
-            generateMetadata(originalUrl),
+            generateMetadata(destination),
             generateQRCode(shortUrl)
         ]);
-        
-        const expiresAt = expiresIn ? new Date(Date.now() + expiresIn * 24 * 60 * 60 * 1000) : null;
-        
+
+        const expiresAt = expiryDays
+            ? new Date(Date.now() + expiryDays * 24 * 60 * 60 * 1000)
+            : null;
+
         const url = await Url.create({
-            userId: req.user._id, // link owned by logged in user
-            originalUrl,
+            userId: req.user._id,
+            originalUrl: destination,
             shortCode,
-            customAlias: customAlias || null,
+            customAlias: hasCustomAlias ? customAlias : null,
             title,
             description,
             qrCode,
             expiresAt
         });
-        
-        // Cache in Redis - 24 hours TTL
-        await redis.setex(shortCode, 86400, originalUrl);
-        res.status(201).json({ shortUrl, shortCode, title, description, qrCode });
+
+        await cacheUrl(shortCode, destination);
+
+        return res.status(201).json({
+            shortUrl,
+            shortCode,
+            title,
+            description,
+            qrCode
+        });
     } catch (err) {
-        console.error(err);
-        res.status(500).json({ error: 'Server error' });
+        // Handle duplicate aliases if concurrent requests race.
+        if (err.code === 11000) {
+            return res.status(409).json({ error: 'Alias already taken.' });
+        }
+
+        console.error('URL creation failed:', err.message);
+
+        return res.status(500).json({ error: 'Server error.' });
     }
 };
 
-// the expiration will be checked before redirection from redis
+// Redirect a short link after checking expiry in MongoDB.
 const redirectUrl = async (req, res) => {
     try {
         const { shortCode } = req.params;
 
-        // Load expiry information from MongoDB first.
         const url = await Url.findOne({ shortCode });
 
         if (!url) {
-            return res.status(404).send('Short link not found');
+            return res.status(404).send('Short link not found.');
         }
 
-        // Never redirect an expired link, even if it is cached.
         if (url.expiresAt && url.expiresAt <= new Date()) {
-            await redis.del(shortCode);
-            return res.status(410).send('This short link has expired');
+            await clearCachedUrl(shortCode);
+            return res.status(410).send('This short link has expired.');
         }
 
-        // Use the cache only after confirming the link is valid.
-        const cached = await redis.get(shortCode);
+        // MongoDB is the source of truth. Redis is only a cache.
+        // Use the database destination for this redirect to avoid
+        // following stale or tampered cached values.
+        await cacheUrl(shortCode, url.originalUrl);
 
-        if (!cached) {
-            await redis.setex(shortCode, 86400, url.originalUrl);
-        }
+        // Do not make the redirect depend on click logging succeeding.
+        void logClick(shortCode, req);
 
-        logClick(shortCode, req);
-        return res.redirect(cached || url.originalUrl);
-
-    } catch (error) {
-        console.error('Redirect error:', error);
-        return res.status(500).send('Internal server error');
+        return res.redirect(url.originalUrl);
+    } catch (err) {
+        console.error('Redirect failed:', err.message);
+        return res.status(500).send('Internal server error.');
     }
 };
 
-
-// GET /api/my-links - get all links for logged in user
+// GET /api/my-links
 const getMyLinks = async (req, res) => {
     try {
         const urls = await Url.find({ userId: req.user._id })
             .sort({ createdAt: -1 });
-        res.json({ count: urls.length, urls });
+
+        return res.status(200).json({
+            count: urls.length,
+            urls
+        });
     } catch (err) {
-        res.status(500).json({ error: 'Server error' });
+        console.error('Fetching user links failed:', err.message);
+        return res.status(500).json({ error: 'Server error.' });
     }
 };
 
-// DELETE /api/url/:shortCode - delete own link
+// DELETE /api/url/:shortCode
 const deleteUrl = async (req, res) => {
     try {
         const { shortCode } = req.params;
+
         const url = await Url.findOne({ shortCode });
-        if (!url) return res.status(404).json({ error: 'Link not found' });
-        
-        // Only owner can delete
-        if (url.userId.toString() !== req.user._id.toString()) {
-            return res.status(403).json({ error: 'Not authorized to delete this link' });
+
+        if (!url) {
+            return res.status(404).json({ error: 'Link not found.' });
         }
-        
-        await Url.deleteOne({ shortCode });
-        await redis.del(shortCode);
-        res.json({ message: 'Link deleted successfully' });
+
+        if (url.userId.toString() !== req.user._id.toString()) {
+            return res.status(403).json({
+                error: 'Not authorized to delete this link.'
+            });
+        }
+
+        await Url.deleteOne({
+            _id: url._id,
+            userId: req.user._id
+        });
+
+        await clearCachedUrl(shortCode);
+
+        return res.status(200).json({
+            message: 'Link deleted successfully.'
+        });
     } catch (err) {
-        res.status(500).json({ error: 'Server error' });
+        console.error('Deleting URL failed:', err.message);
+        return res.status(500).json({ error: 'Server error.' });
     }
 };
 
-// Internal - log click async
+// Internal click logging.
 const logClick = async (shortCode, req) => {
     try {
         const ua = req.headers['user-agent'] || '';
-        const device = ua.includes('Mobile') ? 'mobile' : 'desktop';
-        const browser = ua.includes('Chrome') ? 'Chrome' : ua.includes('Firefox') ? 'Firefox' : ua.includes('Safari') ? 'Safari' : 'Other';
-        
+
+        const device = /mobile/i.test(ua) ? 'mobile' : 'desktop';
+
+        const browser = /Edg\//i.test(ua)
+            ? 'Edge'
+            : /Chrome\//i.test(ua)
+                ? 'Chrome'
+                : /Firefox\//i.test(ua)
+                    ? 'Firefox'
+                    : /Safari\//i.test(ua)
+                        ? 'Safari'
+                        : 'Other';
+
         await Url.updateOne(
-            { shortCode }, 
-            { $push: { clicks: { timestamp: new Date(), ip: req.ip, device, browser } } }
+            { shortCode },
+            {
+                $push: {
+                    clicks: {
+                        timestamp: new Date(),
+                        ip: req.ip,
+                        device,
+                        browser
+                    }
+                }
+            }
         );
     } catch (err) {
-        console.error('Click log error:', err);
+        console.error('Click logging failed:', err.message);
     }
 };
 
-// PUT /api/url/:shortCode - dynamically update destination
+// PUT /api/url/:shortCode
 const updateUrl = async (req, res) => {
     try {
-        const { originalUrl } = req.body;
+        const { originalUrl } = req.body || {};
         const { shortCode } = req.params;
 
-        if (!originalUrl) {
-            return res.status(400).json({ error: 'New destination URL is required' });
+        if (typeof originalUrl !== 'string' || !originalUrl.trim()) {
+            return res.status(400).json({
+                error: 'New destination URL is required.'
+            });
         }
 
-        const url = await Url.findOneAndUpdate(
-            { shortCode, userId: req.user._id },
-            { originalUrl },
-            { new: true }
-        );
+        const destination = originalUrl.trim();
 
-        if (!url) return res.status(404).json({ error: 'URL not found or unauthorized' });
+        if (!isValidHttpUrl(destination)) {
+            return res.status(400).json({
+                error: 'Please provide a valid HTTP or HTTPS URL.'
+            });
+        }
 
-        // Update the Redis cache immediately so traffic routes correctly
-        await redis.setex(shortCode, 86400, originalUrl);
+        const url = await Url.findOne({
+            shortCode,
+            userId: req.user._id
+        });
 
-        res.json({ message: 'URL updated successfully', url });
+        if (!url) {
+            return res.status(404).json({
+                error: 'URL not found or unauthorized.'
+            });
+        }
+
+        url.originalUrl = destination;
+        await url.save();
+
+        // Refresh the cache after MongoDB has been updated.
+        await cacheUrl(shortCode, destination);
+
+        return res.status(200).json({
+            message: 'URL updated successfully.',
+            url
+        });
     } catch (err) {
-        console.error(err);
-        res.status(500).json({ error: 'Server error while updating URL' });
+        console.error('Updating URL failed:', err.message);
+        return res.status(500).json({
+            error: 'Server error while updating URL.'
+        });
     }
 };
 
-module.exports = { shortenUrl, redirectUrl, getMyLinks, deleteUrl, updateUrl };
+module.exports = {
+    shortenUrl,
+    redirectUrl,
+    getMyLinks,
+    deleteUrl,
+    updateUrl
+};
