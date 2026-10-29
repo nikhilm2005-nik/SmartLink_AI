@@ -4,6 +4,7 @@ const Url = require('../models/Url');
 const redis = require('../config/redis');
 const { generateMetadata } = require('../services/groq.service');
 const { generateQRCode } = require('../services/qr.service');
+const Click = require('../models/Click');
 
 // Validate HTTP/HTTPS destinations.
 const isValidHttpUrl = (value) => {
@@ -189,20 +190,51 @@ const redirectUrl = async (req, res) => {
 };
 
 // GET /api/my-links
+
 const getMyLinks = async (req, res) => {
     try {
         const urls = await Url.find({ userId: req.user._id })
-            .sort({ createdAt: -1 });
+            .sort({ createdAt: -1 })
+            .lean();
+
+        const urlIds = urls.map((url) => url._id);
+
+        const clickCounts = await Click.aggregate([
+            {
+                $match: {
+                    urlId: { $in: urlIds }
+                }
+            },
+            {
+                $group: {
+                    _id: '$urlId',
+                    count: { $sum: 1 }
+                }
+            }
+        ]);
+
+        const countMap = new Map(
+            clickCounts.map((item) => [
+                item._id.toString(),
+                item.count
+            ])
+        );
+
+        const urlsWithCounts = urls.map((url) => ({
+            ...url,
+            clickCount: countMap.get(url._id.toString()) || 0
+        }));
 
         return res.status(200).json({
-            count: urls.length,
-            urls
+            count: urlsWithCounts.length,
+            urls: urlsWithCounts
         });
     } catch (err) {
         console.error('Fetching user links failed:', err.message);
         return res.status(500).json({ error: 'Server error.' });
     }
 };
+
 
 // DELETE /api/url/:shortCode
 const deleteUrl = async (req, res) => {
@@ -238,8 +270,13 @@ const deleteUrl = async (req, res) => {
 };
 
 // Internal click logging.
+
 const logClick = async (shortCode, req) => {
     try {
+        const url = await Url.findOne({ shortCode }).select('_id');
+
+        if (!url) return;
+
         const ua = req.headers['user-agent'] || '';
 
         const device = /mobile/i.test(ua) ? 'mobile' : 'desktop';
@@ -254,23 +291,18 @@ const logClick = async (shortCode, req) => {
                         ? 'Safari'
                         : 'Other';
 
-        await Url.updateOne(
-            { shortCode },
-            {
-                $push: {
-                    clicks: {
-                        timestamp: new Date(),
-                        ip: req.ip,
-                        device,
-                        browser
-                    }
-                }
-            }
-        );
+        await Click.create({
+            urlId: url._id,
+            timestamp: new Date(),
+            ip: req.ip,
+            device,
+            browser
+        });
     } catch (err) {
         console.error('Click logging failed:', err.message);
     }
 };
+
 
 // PUT /api/url/:shortCode
 const updateUrl = async (req, res) => {
