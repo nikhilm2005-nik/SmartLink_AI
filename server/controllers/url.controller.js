@@ -237,37 +237,48 @@ const getMyLinks = async (req, res) => {
 
 
 // DELETE /api/url/:shortCode
+
 const deleteUrl = async (req, res) => {
     try {
         const { shortCode } = req.params;
 
-        const url = await Url.findOne({ shortCode });
+        const url = await Url.findOne({
+            shortCode,
+            userId: req.user._id
+        });
 
         if (!url) {
-            return res.status(404).json({ error: 'Link not found.' });
-        }
-
-        if (url.userId.toString() !== req.user._id.toString()) {
-            return res.status(403).json({
-                error: 'Not authorized to delete this link.'
+            return res.status(404).json({
+                error: 'Link not found or unauthorized.'
             });
         }
 
+        // Delete the URL first, using the owner's ID as a safeguard.
         await Url.deleteOne({
             _id: url._id,
             userId: req.user._id
         });
 
+        // Remove all click records associated with this URL.
+        await Click.deleteMany({
+            urlId: url._id
+        });
+
+        // Remove its cached destination.
         await clearCachedUrl(shortCode);
 
         return res.status(200).json({
-            message: 'Link deleted successfully.'
+            message: 'Link and associated click analytics deleted successfully.'
         });
     } catch (err) {
         console.error('Deleting URL failed:', err.message);
-        return res.status(500).json({ error: 'Server error.' });
+
+        return res.status(500).json({
+            error: 'Server error while deleting URL.'
+        });
     }
 };
+
 
 // Internal click logging.
 
