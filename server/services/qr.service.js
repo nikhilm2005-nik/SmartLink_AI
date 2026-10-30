@@ -1,22 +1,32 @@
+
 const QRCode = require('qrcode');
 
-// Returns base64 string embedded directly in JSON response
-// Frontend displays it as: <img src="data:image/png;base64,..." />
 const generateQRCode = async (url) => {
+    if (typeof url !== 'string' || !url.trim()) {
+        console.error('QR generation skipped: invalid URL input.');
+        return '';
+    }
+
     try {
-        const qrBase64 = await QRCode.toDataURL(url, {
-            errorCorrectionLevel: 'H', // high error correction
+        const parsedUrl = new URL(url);
+
+        if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+            console.error('QR generation skipped: unsupported URL protocol.');
+            return '';
+        }
+
+        return await QRCode.toDataURL(url, {
+            errorCorrectionLevel: 'H',
             type: 'image/png',
             width: 300,
             margin: 2,
             color: {
-                dark: '#16213e',   // dark navy dots
-                light: '#ffffff'   // white background
+                dark: '#16213e',
+                light: '#ffffff'
             }
         });
-        return qrBase64;
     } catch (err) {
-        console.error('QR generation error', err);
+        console.error('QR generation failed:', err.message);
         return '';
     }
 };
